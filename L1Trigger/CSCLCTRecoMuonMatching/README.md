@@ -58,7 +58,7 @@ cmsRun L1Trigger/CSCLCTRecoMuonMatching/test/runCSCLCTRecoMuonMatch_cfg.py \
 
 The header of the cfg shows how to run it on emulator LCTs (GT override and emulator options included).
 
-## Known limitations (smoke test on one ZMu RAW-RECO file of run 403567, 2026-10-20/21, provisional)
+## Known limitations (smoke test on one ZMu RAW-RECO file of run 403567 with ±2 HS / ±2 WG windows, provisional)
 
 - `standalone` and `matches` pick the same segment in 95.8% of the chambers both have.
 - In ME+1/1a and ME−1/1b mean ΔES is ≈ 0.5 eighth-strip lower than in ME+1/1b and ME−1/1a (unexplained).

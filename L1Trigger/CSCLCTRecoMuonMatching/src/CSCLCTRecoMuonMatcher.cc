@@ -100,7 +100,7 @@ CSCLCTRecoMuonMatcher::CSCLCTRecoMuonMatcher(const edm::ParameterSet& pset)
                                    pset.getParameter<int>("maxDeltaWireGroup"),
                                    pset.getParameter<int>("lctBXWindow"))) {}
 
-// Default windows: deliberately loose (user, 2026-10-21), to be tightened from the residual distributions.
+// Default windows: deliberately loose, to be tightened from the residual distributions.
 void CSCLCTRecoMuonMatcher::fillPSetDescription(edm::ParameterSetDescription& desc) {
   desc.add<std::string>("segmentSource", "auto")
       ->setComment(
