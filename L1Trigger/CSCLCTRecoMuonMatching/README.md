@@ -33,8 +33,9 @@ BuildFile: `<use name="L1Trigger/CSCLCTRecoMuonMatching"/>`.
 - `lctBXWindow`: keep LCTs with |BX − 8| ≤ window; < 0 = no selection. Data LCTs carry a 1-bit BX, so keep it < 0
   for them; emulator LCTs span the readout window around BX 8.
 - Muon selection is left to the caller (all muons of the collection are matched).
-- `Config` has no default values; the defaults of `fillPSetDescription` (auto, 2, 2, −1) are the proposals of the
-  matching study, not decided values. Negative windows are rejected.
+- `Config` has no default values. The defaults of `fillPSetDescription` are ±6 half-strips and ±2 wire groups
+  (deliberately loose, to be tightened from the residual distributions), `segmentSource` `auto` (a proposal of the
+  matching study) and `lctBXWindow` −1 (no BX selection, as data LCTs need). Negative windows are rejected.
 - The LCT pointers in the result refer to the LCT collection, the segment pointers to the event products reached
   through the muons (standalone-muon rechits or `cscSegments`); they are valid as long as those products are.
 - ME1/1: the half-strip window spans the ME1b/ME1a numbering boundary (127/128), so an ME1b segment near half-strip

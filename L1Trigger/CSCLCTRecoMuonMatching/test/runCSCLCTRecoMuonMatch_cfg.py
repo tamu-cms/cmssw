@@ -7,7 +7,7 @@
 #
 # Data LCTs are unpacked from rawDataCollector here (no data tier stores them). Only the CSC geometry is needed.
 # Output: tree cscLCTRecoMuonMatchAnalyzer/lctMuon in outputFile, one entry per LCT with its matched muons (vector
-# branches). The matcher defaults (segmentSource, windows) are the study's proposals, not decided values.
+# branches). Default windows: +-6 half-strips, +-2 wire groups (deliberately loose, to be tightened).
 #
 # Emulator LCTs: append to a copy of L1Trigger/CSCTriggerPrimitives/test/runCSCTriggerPrimitiveProducer_cfg.py
 # (it sets process.schedule, has no TFileService, and hard-codes the data GT 140X_dataRun3_v3):
@@ -21,9 +21,9 @@
 #   process.schedule.append(process.lctMatchPath)
 # and run it with unpack=True l1=True run3=True runCCLUTOTMB=True runME11ILT=True useGEMAlignment=True
 # saveEdmOutput=False [use6BitGEMCSCBendingAngle=True] inputFiles=<file>: without run3=True the cfg emulates Run-2
-# TMBs (era Run2_2018), and with the ME1/1 ILT on, empty alignment LUTs throw. The emulator configuration (6-bit
-# bend, the all-zero placeholder alignment, clctNplanesHitPattern) is not matched to the runs' firmware
-# configuration: carry that as a caveat for any emulator-vs-data result.
+# TMBs (era Run2_2018), and with the ME1/1 ILT on, empty alignment LUTs throw. The emulator configuration (one
+# bend LUT width for all ME1/1 chambers while the firmware is 4- or 6-bit per chamber, the all-zero placeholder
+# alignment, clctNplanesHitPattern) is not matched to the runs' firmware configuration: carry that as a caveat.
 import importlib
 
 import FWCore.ParameterSet.Config as cms

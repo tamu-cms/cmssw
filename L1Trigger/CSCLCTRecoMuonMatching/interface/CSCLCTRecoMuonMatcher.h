@@ -42,8 +42,9 @@ public:
     Auto         // Standalone when the standalone track has at least one CSC segment, otherwise Matches
   };
 
-  // All values must be chosen by the caller; the defaults of fillPSetDescription are the proposals of the
-  // LCT <-> reco-muon matching study (not decided). The windows must not be negative.
+  // All values must be chosen by the caller. The defaults of fillPSetDescription: windows +-6 half-strips and
+  // +-2 wire groups (deliberately loose, to be tightened), segmentSource auto (a study proposal), lctBXWindow -1
+  // (no BX selection, as data LCTs need). The matcher rejects negative windows.
   struct Config {
     Config(SegmentSource segmentSource, int maxDeltaHalfStrip, int maxDeltaWireGroup, int lctBXWindow);
     SegmentSource segmentSource;

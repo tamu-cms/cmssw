@@ -84,30 +84,33 @@ CSCLCTRecoMuonMatcher::Config::Config(SegmentSource segmentSource,
     : segmentSource(segmentSource),
       maxDeltaHalfStrip(maxDeltaHalfStrip),
       maxDeltaWireGroup(maxDeltaWireGroup),
-      lctBXWindow(lctBXWindow) {
-  if (maxDeltaHalfStrip < 0 || maxDeltaWireGroup < 0)
-    throw cms::Exception("Configuration") << "CSCLCTRecoMuonMatcher: negative match window (maxDeltaHalfStrip "
-                                          << maxDeltaHalfStrip << ", maxDeltaWireGroup " << maxDeltaWireGroup << ")";
+      lctBXWindow(lctBXWindow) {}
+
+// The members of Config are public, so the windows are checked when the matcher is built.
+CSCLCTRecoMuonMatcher::CSCLCTRecoMuonMatcher(const Config& config) : config_(config) {
+  if (config_.maxDeltaHalfStrip < 0 || config_.maxDeltaWireGroup < 0)
+    throw cms::Exception("Configuration")
+        << "CSCLCTRecoMuonMatcher: negative match window (maxDeltaHalfStrip " << config_.maxDeltaHalfStrip
+        << ", maxDeltaWireGroup " << config_.maxDeltaWireGroup << ")";
 }
 
-CSCLCTRecoMuonMatcher::CSCLCTRecoMuonMatcher(const Config& config) : config_(config) {}
-
 CSCLCTRecoMuonMatcher::CSCLCTRecoMuonMatcher(const edm::ParameterSet& pset)
-    : config_(parseSegmentSource(pset.getParameter<std::string>("segmentSource")),
-              pset.getParameter<int>("maxDeltaHalfStrip"),
-              pset.getParameter<int>("maxDeltaWireGroup"),
-              pset.getParameter<int>("lctBXWindow")) {}
+    : CSCLCTRecoMuonMatcher(Config(parseSegmentSource(pset.getParameter<std::string>("segmentSource")),
+                                   pset.getParameter<int>("maxDeltaHalfStrip"),
+                                   pset.getParameter<int>("maxDeltaWireGroup"),
+                                   pset.getParameter<int>("lctBXWindow"))) {}
 
-// The defaults are the proposals of the LCT <-> reco-muon matching study (definitions not decided yet).
+// Default windows: deliberately loose (user, 2026-10-21), to be tightened from the residual distributions.
 void CSCLCTRecoMuonMatcher::fillPSetDescription(edm::ParameterSetDescription& desc) {
   desc.add<std::string>("segmentSource", "auto")
       ->setComment(
           "standalone: CSC segments of the standalone track; matches: arbitrated reco::Muon chamber matches; "
-          "auto: standalone when the standalone track has at least one CSC segment, otherwise matches");
-  desc.add<int>("maxDeltaHalfStrip", 2)
-      ->setComment("match window |LCT - segment| in key half-strips (default: a proposal, not decided)");
+          "auto: standalone when the standalone track has at least one CSC segment, otherwise matches "
+          "(default auto: a proposal of the matching study, not decided)");
+  desc.add<int>("maxDeltaHalfStrip", 6)
+      ->setComment("match window |LCT - segment| in key half-strips (default 6: loose, to be tightened)");
   desc.add<int>("maxDeltaWireGroup", 2)
-      ->setComment("match window |LCT - segment| in key wire groups (default: a proposal, not decided)");
+      ->setComment("match window |LCT - segment| in key wire groups (default 2: loose, to be tightened)");
   desc.add<int>("lctBXWindow", -1)
       ->setComment("keep LCTs with |BX - 8| <= lctBXWindow; < 0: no BX selection (data LCTs carry a 1-bit BX)");
 }
