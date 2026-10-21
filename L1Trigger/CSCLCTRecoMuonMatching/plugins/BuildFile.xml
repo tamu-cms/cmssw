@@ -1,0 +1,14 @@
+<use name="CommonTools/UtilAlgos"/>
+<use name="DataFormats/CSCDigi"/>
+<use name="DataFormats/CSCRecHit"/>
+<use name="DataFormats/MuonReco"/>
+<use name="FWCore/Framework"/>
+<use name="FWCore/ParameterSet"/>
+<use name="FWCore/ServiceRegistry"/>
+<use name="Geometry/CSCGeometry"/>
+<use name="Geometry/Records"/>
+<use name="L1Trigger/CSCLCTRecoMuonMatching"/>
+<use name="root"/>
+<library file="*.cc" name="L1TriggerCSCLCTRecoMuonMatchingPlugins">
+  <flags EDM_PLUGIN="1"/>
+</library>
