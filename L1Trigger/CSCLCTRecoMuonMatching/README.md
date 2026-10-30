@@ -54,15 +54,15 @@ applied when the ntuple is analysed. Row indices are 0-based, −1 = none.
 | Collection | Content | Producer |
 |---|---|---|
 | `LCT` | every LCT the matcher considers (valid, inside `lctBXWindow`), in collection order: chamber, hs, es, wg, quality, patterns, slope (`slope6` = `getSlopeEx(6)`), bend, bx, type, gemLayer, `nMuonMatch`, (MC) `nSimTrackMatch` | `CSCLCTRecoMuonTableProducer` |
-| `Muon` | every reco muon, in collection order: central NanoAOD names where the quantity is the same (pt, eta, phi, charge, isGlobal, isTracker, isStandalone, isPFcand, looseId, mediumId, tightId, pfRelIso04_all, dxy, dz, nStations), standalone-track kinematics, `nCSCSegments`, `nLCTMatch` | `CSCLCTRecoMuonTableProducer` |
+| `Muon` | every reco muon, in collection order: central NanoAOD names where the quantity is the same (pt, eta, phi, charge, isGlobal, isTracker, isStandalone, isPFcand, looseId, mediumId, tightId, pfRelIso04_all, dxy, dz, nStations), standalone-track kinematics (0 if none: `standalonePt == 0`), `nCSCSegments`, `nLCTMatch` | `CSCLCTRecoMuonTableProducer` |
 | `LCTMuonMatch` | one row per matched LCT–muon pair, grouped by LCT, closest muon first: `lctIdx`, `muonIdx`, the segment (source, ring, hits, χ²/ndof, time), its key-layer position and the residuals `dHS`, `dES`, `dWG` | `CSCLCTRecoMuonTableProducer` |
-| `TrigObj` | HLT muon objects with `filterBits`, as in the central NanoAOD (Run 3: its muon selection; Phase 2: `hltPhase2L3MuonCandidates`, bits 1 = Iso, 3 = 1mu, 10 = Mu50 set by the final filters of `HLT_IsoMu24_FromL1TkMuon` / `HLT_Mu50_FromL1TkMuon`) | PAT trigger chain + `triggerObjectTable` |
+| `TrigObj` | HLT muon objects with `filterBits`, as in the central NanoAOD (Run 3: its muon selection; Phase 2: `hltPhase2L3MuonCandidates`, bits 1 = Iso, 3 = 1mu, 10 = Mu50 set by the final filters of `HLT_IsoMu24_FromL1TkMuon` / `HLT_Mu50_FromL1TkMuon`, only objects with a bit are kept), plus bit 14 = the object passed the last filter of `HLT_IsoMu24_v*` (Phase 2: `HLT_IsoMu24_FromL1TkMuon`); the central bits 1 and 3 also match the final filters of IsoMu20 and IsoMu27 | PAT trigger chain + `triggerObjectTable` |
 | `L1Mu` | L1 muons (legacy GMT, BX −2..2) | central `l1MuTable` |
 | `L1gmtMuon`, `L1gmtTkMuon` | Phase 2 only: Phase-2 GMT standalone and tracker muons | `DPGAnalysis/Phase2L1TNanoAOD` |
 | `HLT_*`, `L1_*` | HLT path bits of the HLT process; L1 bits (Run 3 from `gtStage2Digis`, Phase 2 from the Phase-2 GT) | `NanoAODOutputModule`, `l1bits` |
 | `GenPart` | MC: generator muons and all their ancestors, central GenPart columns at full precision | `GenParticlePruner` + central `genParticleTable` |
 | `SimTrack` | MC: muon SimTracks and every SimTrack with a CSC simhit (signal only): kinematics, vertex, `genPartIdx` (row in GenPart), `parentIdx`, `nCSCSimHits`, `nLCTMatch` | `CSCLCTSimTrackTableProducer` |
-| `LCTSimTrackMatch` | MC: one row per LCT–SimTrack pair within ±6 HS / ±2 WG, grouped by LCT, closest first: `lctIdx`, `simTrackIdx`, the simhit key-layer position (the track's own layer-3 simhit, else the line through its simhits in the chamber) and the residuals | `CSCLCTSimTrackTableProducer` |
+| `LCTSimTrackMatch` | MC: one row per LCT–SimTrack pair within the same windows as the muons (default ±6 HS / ±2 WG), grouped by LCT, closest first: `lctIdx`, `simTrackIdx`, the simhit key-layer position (the track's own layer-3 simhit, else the line through its simhits in the chamber) and the residuals | `CSCLCTSimTrackTableProducer` |
 
 ```bash
 # data: ZMu RAW-RECO (LCTs unpacked here)
@@ -75,7 +75,9 @@ cmsRun ... mc=True inputFiles=file:<GEN-SIM-RECO> secondaryInputFiles=file:<GEN-
 cmsRun ... mc=True inputFiles=file:<GEN-SIM-RECO> globalTag=<GT> era=Phase2C22I13M9 geometry=ExtendedRun4D121
 ```
 
-The header of the cfg shows how to write the ntuple from emulator LCTs re-emulated from data. Table names have no
+The header of the cfg shows how to write the ntuple from emulator LCTs re-emulated from data. The cff keeps the
+central labels of the PAT trigger and NanoAOD modules (`patTrigger`, `triggerObjectTable`, `l1bits`, ...), so it cannot be
+loaded into a job that also runs the PAT or NANO steps. Table names have no
 underscore and the link columns follow the NanoAOD `<target>Idx` convention; coffea's `NanoAODSchema` does not know the
 link tables, so they are read as plain collections.
 

@@ -6,6 +6,8 @@
 #   HLT_* and L1_* bits                 TriggerResults of the HLT process and l1bits, written by NanoAODOutputModule
 #   GenPart, SimTrack, LCTSimTrackMatch cscLCTNanoMCTask (MC only)
 # Module labels end in "Table" where NanoAODOutputModule must keep the product (keep nanoaodFlatTable_*Table_*_*).
+# The PAT trigger and NanoAOD modules keep their central labels (patTrigger, triggerObjectTable, l1bits, ...): this cff
+# cannot be loaded into a job that also runs the PAT or NANO steps.
 import FWCore.ParameterSet.Config as cms
 
 from Configuration.Eras.Modifier_phase2_trigger_cff import phase2_trigger
@@ -25,10 +27,15 @@ from PhysicsTools.PatAlgos.triggerLayer1.triggerProducer_cfi import patTrigger a
 cscLCTRecoMuonTable = cscLCTRecoMuonTableProducer.clone()
 
 # As miniAOD makes slimmedPatTrigger (switchOnTriggerStandAlone, packed path names), then the central TrigObj table
-# restricted to its muon selection.
+# restricted to its muon selection, plus bit 14: the object passed the last filter of HLT_IsoMu24 (the central bits
+# 1 = Iso and 3 = 1mu also match the final filters of HLT_IsoMu20 and HLT_IsoMu27).
 patTrigger = _patTrigger.clone(onlyStandAlone=True, packTriggerPathNames=cms.bool(True))
-triggerObjectTable = _triggerObjectTable.clone(selections=cms.PSet(Muon=_triggerObjectTable.selections.Muon))
-l1bits = _l1bits.clone()
+triggerObjectTable = _triggerObjectTable.clone(selections=cms.PSet(Muon=_triggerObjectTable.selections.Muon.clone()))
+triggerObjectTable.selections.Muon.qualityBits.append(
+    mksel("path('HLT_IsoMu24_v*', 1, 0)", "last filter of HLT_IsoMu24")
+)
+# The unprefireable-event bit needs simGtExtUnprefireable, which only miniAOD makes; without it the bit is always false.
+l1bits = _l1bits.clone(storeUnprefireableBits=False)
 
 cscLCTNanoTask = cms.Task(
     cscLCTRecoMuonTable,
@@ -42,9 +49,10 @@ cscLCTNanoTask = cms.Task(
 )
 
 # Phase 2: the central muon selection uses Run-3 HLT collections and filters. The Phase-2 menu (HLT_75e33) keeps its L3
-# muons in hltPhase2L3MuonCandidates; the bits keep the central positions (1 = Iso, 3 = 1mu, 10 = 1mu (Mu50)) with the
-# final filters of HLT_IsoMu24_FromL1TkMuon and HLT_Mu50_FromL1TkMuon. L1 bits from the Phase-2 GT and the Phase-2 GMT
-# muons (L1gmtMuon, L1gmtTkMuon) are added; L1Mu and the TrigObj l1 columns stay those of the legacy GMT emulation.
+# muons in hltPhase2L3MuonCandidates; the bits keep the central positions (1 = Iso, 3 = 1mu, 10 = 1mu (Mu50),
+# 14 = last filter of the IsoMu24 path) with the final filters of HLT_IsoMu24_FromL1TkMuon and HLT_Mu50_FromL1TkMuon;
+# only objects with one of these bits are stored. L1 bits from the Phase-2 GT and the Phase-2 GMT muons (L1gmtMuon,
+# L1gmtTkMuon) are added; L1Mu and the TrigObj l1 columns stay those of the legacy GMT emulation.
 _none = mksel("0", "None")
 phase2_trigger.toModify(
     triggerObjectTable.selections.Muon,
@@ -61,6 +69,10 @@ phase2_trigger.toModify(
         _none,
         _none,
         mksel("filter('hltL3fL1TkSingleMu22L3Filtered50Q')", "1mu (Mu50)"),
+        _none,
+        _none,
+        _none,
+        mksel("path('HLT_IsoMu24_FromL1TkMuon', 1, 0)", "last filter of HLT_IsoMu24_FromL1TkMuon"),
     ),
 )
 phase2_trigger.toReplaceWith(l1bits, _l1tP2GTTrigConvert.clone())

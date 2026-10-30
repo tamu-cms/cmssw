@@ -250,19 +250,19 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "standaloneEta",
       muonRows,
       [&](size_t m) { return mu(m).outerTrack().isNonnull() ? mu(m).outerTrack()->eta() : 0.f; },
-      "eta of the standalone track, 0 if none");
+      "eta of the standalone track, 0 if none (standalonePt == 0)");
   addColumn<float>(
       *muonTable,
       "standalonePhi",
       muonRows,
       [&](size_t m) { return mu(m).outerTrack().isNonnull() ? mu(m).outerTrack()->phi() : 0.f; },
-      "phi of the standalone track, 0 if none");
+      "phi of the standalone track, 0 if none (standalonePt == 0)");
   addColumn<int16_t>(
       *muonTable,
       "nCSCSegments",
       muonRows,
       [&](size_t m) { return matcher_.muonSegments(mu(m)).size(); },
-      "number of CSC segments the matcher uses for this muon (matcher.segmentSource)");
+      "number of CSC segments of this muon for matcher.segmentSource, including those without a valid key position");
   addColumn<int16_t>(
       *muonTable,
       "nLCTMatch",

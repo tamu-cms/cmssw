@@ -7,7 +7,8 @@
 //   LCT (extension)   nSimTrackMatch.
 // The key-layer position of a SimTrack in a chamber is its own layer-3 simhit (entry-exit midpoint), otherwise the
 // straight line through its simhits in that chamber taken at layer 3. Only the simhits whose particle type is the
-// track's own are used for the position (a simhit of a secondary that was not saved carries its ancestor's track id).
+// track's own are used for the position (a simhit of a secondary that was not saved carries its ancestor's track id;
+// those of a secondary of the same particle type, e.g. a delta ray of an electron track, are kept).
 // As for segments, ME1a (ring 4) and ME1b (ring 1) simhits both map to the ring-1 LCT chamber, each with the geometry of
 // its own ring, and per LCT a SimTrack keeps its closest position.
 // The LCTs are read from the LCT table, so the lctIdx are its rows by construction.
@@ -211,7 +212,10 @@ void CSCLCTSimTrackTableProducer::produce(edm::Event& event, const edm::EventSet
       throw cms::Exception("ProductNotValid")
           << "SimTrack " << t.trackId() << ": barcode " << t.genpartIndex() << " not in genParticles";
     const reco::GenParticleRef kept = genAssociation[reco::GenParticleRef(genParticles, g->second)];
-    return kept.isNonnull() ? int16_t(kept.key()) : int16_t(-1);
+    if (kept.isNull())
+      return -1;
+    checkIndexRange(kept.key() + 1, "GenPart rows");
+    return kept.key();
   };
   const auto parentTrackId = [&](size_t i) -> int {
     const SimTrack& t = simTracks[i];
@@ -221,8 +225,8 @@ void CSCLCTSimTrackTableProducer::produce(edm::Event& event, const edm::EventSet
   // LCT rows per LCT chamber, from the LCT table.
   const auto column = [&lctTable](const char* name) {
     const int c = lctTable.columnIndex(name);
-    if (c < 0)
-      throw cms::Exception("ProductNotValid") << "LCT table has no column " << name;
+    if (c < 0 || lctTable.columnType(c) != nanoaod::FlatTable::ColumnType::Int16)
+      throw cms::Exception("ProductNotValid") << "LCT table has no int16 column " << name;
     return lctTable.columnData<int16_t>(c);
   };
   const auto endcap = column("endcap"), station = column("station"), ring = column("ring"), chamber = column("chamber"),

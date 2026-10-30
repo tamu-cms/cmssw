@@ -4,12 +4,15 @@
 #
 #   cmsRun runCSCLCTNano_cfg.py inputFiles=<file> globalTag=<GT of the input> [era=Run3_2026] [geometry=<name>] \
 #       [mc=True] [lcts=<module[:instance]>] [maxEvents=100] [secondaryInputFiles=<RAW parent>] [outputFile=...] \
-#       [segmentSource=auto|standalone|matches] [maxDeltaHalfStrip=N] [maxDeltaWireGroup=N] [hltProcess=HLT]
+#       [segmentSource=auto|standalone|matches] [maxDeltaHalfStrip=N] [maxDeltaWireGroup=N] [lctBXWindow=N] \
+#       [hltProcess=HLT]
 #
 # Every event of the input is written (tag and probe is done on the ntuple). LCTs: data default = unpacked from
 # rawDataCollector here (no data tier stores them); MC default = the emulator LCTs simCscTriggerPrimitiveDigis of the
 # DIGI step (TMB level). geometry: empty = from the global tag (Run 3); for Phase 2 the name of a
-# Configuration/Geometry Geometry<name>Reco_cff, e.g. ExtendedRun4D121.
+# Configuration/Geometry Geometry<name>Reco_cff, e.g. ExtendedRun4D121. The match windows apply to the LCT-muon and
+# (MC) the LCT-SimTrack links. lctBXWindow (default -1 = all LCTs): emulator LCTs span the readout window around BX 8,
+# data LCTs carry a 1-bit BX and must keep -1.
 #
 # Emulator LCTs from data: append to a copy of L1Trigger/CSCTriggerPrimitives/test/runCSCTriggerPrimitiveProducer_cfg.py
 # (it sets process.schedule, hard-codes the data GT 140X_dataRun3_v3 and has no NanoAOD output):
@@ -17,6 +20,7 @@
 #   process.GlobalTag = GlobalTag(process.GlobalTag, "<GT of the runs>", "")
 #   process.load("L1Trigger.CSCLCTRecoMuonMatching.cscLCTNano_cff")
 #   process.cscLCTRecoMuonTable.lcts = "cscTriggerPrimitiveDigis"  # TMB level (L1TdeCSCTPG uses :MPCSORTED)
+#   process.cscLCTRecoMuonTable.matcher.lctBXWindow = <N>         # emulator LCTs span BX 5-11 around 8
 #   and the NanoAODOutputModule EndPath of this file, appended to process.schedule;
 # run it with unpack=True l1=True run3=True runCCLUTOTMB=True runME11ILT=True useGEMAlignment=True
 # saveEdmOutput=False [use6BitGEMCSCBendingAngle=True] inputFiles=<file>: without run3=True the cfg emulates Run-2
@@ -49,6 +53,8 @@ options.register("maxDeltaHalfStrip", _defaults.matcher.maxDeltaHalfStrip.value(
                  VarParsing.multiplicity.singleton, VarParsing.varType.int, "LCT-muon match window in key half-strips")
 options.register("maxDeltaWireGroup", _defaults.matcher.maxDeltaWireGroup.value(),
                  VarParsing.multiplicity.singleton, VarParsing.varType.int, "LCT-muon match window in key wire groups")
+options.register("lctBXWindow", _defaults.matcher.lctBXWindow.value(), VarParsing.multiplicity.singleton,
+                 VarParsing.varType.int, "keep LCTs with |BX - 8| <= lctBXWindow; < 0: all (data: keep -1)")
 options.setType("outputFile", VarParsing.varType.string)  # no automatic _numEvent<N> suffix
 options.setDefault("outputFile", "cscLCTNano.root")
 options.setDefault("maxEvents", 100)
@@ -82,6 +88,9 @@ process.cscLCTRecoMuonTable.lcts = lcts
 process.cscLCTRecoMuonTable.matcher.segmentSource = options.segmentSource
 process.cscLCTRecoMuonTable.matcher.maxDeltaHalfStrip = options.maxDeltaHalfStrip
 process.cscLCTRecoMuonTable.matcher.maxDeltaWireGroup = options.maxDeltaWireGroup
+process.cscLCTRecoMuonTable.matcher.lctBXWindow = options.lctBXWindow
+process.cscLCTSimTrackTable.maxDeltaHalfStrip = options.maxDeltaHalfStrip
+process.cscLCTSimTrackTable.maxDeltaWireGroup = options.maxDeltaWireGroup
 process.patTrigger.processName = options.hltProcess
 for _module in (process.slimmedPatTrigger, process.unpackedPatTrigger):
     _module.triggerResults = cms.InputTag("TriggerResults", "", options.hltProcess)
