@@ -1,4 +1,4 @@
-# L1Trigger/CSCLCTRecoMuonMatching
+# L1Trigger/GemCscNano
 
 Association of CSC LCTs with reco muons through the muons' own CSC segments (no propagation, no ΔR), and a NanoAOD-format
 ntuple of LCTs, reco muons, trigger information and simulation truth with the associations as index columns.
@@ -6,7 +6,7 @@ ntuple of LCTs, reco muons, trigger information and simulation truth with the as
 ## Library
 
 ```cpp
-#include "L1Trigger/CSCLCTRecoMuonMatching/interface/CSCLCTRecoMuonMatcher.h"
+#include "L1Trigger/GemCscNano/interface/CSCLCTRecoMuonMatcher.h"
 
 // in the module constructor: matcher_(ps.getParameter<edm::ParameterSet>("matcher")) and, in fillDescriptions,
 // CSCLCTRecoMuonMatcher::fillPSetDescription(matcherDesc); desc.add<edm::ParameterSetDescription>("matcher", matcherDesc);
@@ -19,7 +19,7 @@ for (const auto& lm : matches) {            // one entry per valid LCT
 }
 ```
 
-BuildFile: `<use name="L1Trigger/CSCLCTRecoMuonMatching"/>`.
+BuildFile: `<use name="L1Trigger/GemCscNano"/>`.
 
 - Each CSC segment of each muon is placed on the key layer (layer 3) in LCT units: key half-strip (0-based; ME1/1:
   ME1b 0-127, ME1a 128-223), eighth-strip (CCLUT convention, es = 4·hs at the half-strip centre), key wire group
@@ -46,7 +46,7 @@ BuildFile: `<use name="L1Trigger/CSCLCTRecoMuonMatching"/>`.
 Inputs need reco and raw in the same event (data LCTs are unpacked from RAW): e.g. the ZMu RAW-RECO skim, or AOD with
 its RAW parent. MiniAOD cannot be used (no CSC segments; the segment refs in `slimmedMuons` are not usable).
 
-## NanoAOD ntuple (`python/cscLCTNano_cff.py`, `test/runCSCLCTNano_cfg.py`)
+## NanoAOD ntuple (`python/GemCscNano_cff.py`, `test/runGemCscNano_cfg.py`)
 
 One `Events` entry per input event, written by `NanoAODOutputModule`. No event or object selection: tag and probe is
 applied when the ntuple is analysed. Row indices are 0-based, −1 = none.
@@ -66,7 +66,7 @@ applied when the ntuple is analysed. Row indices are 0-based, −1 = none.
 
 ```bash
 # data: ZMu RAW-RECO (LCTs unpacked here)
-cmsRun L1Trigger/CSCLCTRecoMuonMatching/test/runCSCLCTNano_cfg.py inputFiles=file:<file> \
+cmsRun L1Trigger/GemCscNano/test/runGemCscNano_cfg.py inputFiles=file:<file> \
   globalTag=<GT of the runs> era=Run3_2026 maxEvents=1000
 # Run-3 MC: GEN-SIM-RECO with its GEN-SIM-DIGI-RAW parent (emulator LCTs simCscTriggerPrimitiveDigis)
 cmsRun ... mc=True inputFiles=file:<GEN-SIM-RECO> secondaryInputFiles=file:<GEN-SIM-DIGI-RAW parent> \

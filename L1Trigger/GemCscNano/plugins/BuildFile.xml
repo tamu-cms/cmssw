@@ -12,10 +12,10 @@
 <use name="FWCore/Utilities"/>
 <use name="Geometry/CSCGeometry"/>
 <use name="Geometry/Records"/>
-<use name="L1Trigger/CSCLCTRecoMuonMatching"/>
+<use name="L1Trigger/GemCscNano"/>
 <use name="SimDataFormats/Track"/>
 <use name="SimDataFormats/TrackingHit"/>
 <use name="SimDataFormats/Vertex"/>
-<library file="*.cc" name="L1TriggerCSCLCTRecoMuonMatchingPlugins">
+<library file="*.cc" name="L1TriggerGemCscNanoPlugins">
   <flags EDM_PLUGIN="1"/>
 </library>

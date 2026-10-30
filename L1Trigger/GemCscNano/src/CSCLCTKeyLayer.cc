@@ -1,4 +1,4 @@
-#include "L1Trigger/CSCLCTRecoMuonMatching/interface/CSCLCTKeyLayer.h"
+#include "L1Trigger/GemCscNano/interface/CSCLCTKeyLayer.h"
 
 #include "DataFormats/CSCDigi/interface/CSCConstants.h"
 #include "DataFormats/CSCRecHit/interface/CSCRecHit2D.h"

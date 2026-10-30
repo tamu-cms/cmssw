@@ -1,5 +1,5 @@
-#ifndef L1Trigger_CSCLCTRecoMuonMatching_CSCLCTKeyLayer_h
-#define L1Trigger_CSCLCTRecoMuonMatching_CSCLCTKeyLayer_h
+#ifndef L1Trigger_GemCscNano_CSCLCTKeyLayer_h
+#define L1Trigger_GemCscNano_CSCLCTKeyLayer_h
 
 // Conversion of offline CSC objects (rechits, segments) into LCT channel space at the key layer (layer 3):
 //   key half-strip, 0-based (ME1/1: ME1b 0-127, ME1a 128-223),

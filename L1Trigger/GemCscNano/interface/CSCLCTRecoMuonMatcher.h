@@ -1,5 +1,5 @@
-#ifndef L1Trigger_CSCLCTRecoMuonMatching_CSCLCTRecoMuonMatcher_h
-#define L1Trigger_CSCLCTRecoMuonMatching_CSCLCTRecoMuonMatcher_h
+#ifndef L1Trigger_GemCscNano_CSCLCTRecoMuonMatcher_h
+#define L1Trigger_GemCscNano_CSCLCTRecoMuonMatcher_h
 
 // Association of CSC LCTs with reco muons through the muons' own CSC segments: no propagation, no deltaR.
 //
@@ -23,7 +23,7 @@
 #include "DataFormats/CSCRecHit/interface/CSCSegment.h"
 #include "DataFormats/MuonDetId/interface/CSCDetId.h"
 #include "DataFormats/MuonReco/interface/MuonFwd.h"
-#include "L1Trigger/CSCLCTRecoMuonMatching/interface/CSCLCTKeyLayer.h"
+#include "L1Trigger/GemCscNano/interface/CSCLCTKeyLayer.h"
 
 #include <utility>
 #include <vector>

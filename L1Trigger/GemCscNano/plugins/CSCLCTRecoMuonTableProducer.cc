@@ -23,7 +23,7 @@
 #include "FWCore/Utilities/interface/Exception.h"
 #include "Geometry/CSCGeometry/interface/CSCGeometry.h"
 #include "Geometry/Records/interface/MuonGeometryRecord.h"
-#include "L1Trigger/CSCLCTRecoMuonMatching/interface/CSCLCTRecoMuonMatcher.h"
+#include "L1Trigger/GemCscNano/interface/CSCLCTRecoMuonMatcher.h"
 
 #include <algorithm>
 #include <limits>

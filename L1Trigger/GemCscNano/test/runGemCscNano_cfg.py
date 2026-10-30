@@ -1,8 +1,8 @@
-# NanoAOD-format ntuple of CSC LCTs, reco muons, trigger information and (MC) simulation truth (cscLCTNano_cff), from
+# NanoAOD-format ntuple of CSC LCTs, reco muons, trigger information and (MC) simulation truth (GemCscNano_cff), from
 # inputs that carry both RAW and reco: the ZMu skim (/Muon0/Run2026D-ZMu-PromptReco-v1/RAW-RECO), AOD with its RAW
 # parent given as secondary files, or MC GEN-SIM-RECO with its GEN-SIM-DIGI-RAW parent as secondary files.
 #
-#   cmsRun runCSCLCTNano_cfg.py inputFiles=<file> globalTag=<GT of the input> [era=Run3_2026] [geometry=<name>] \
+#   cmsRun runGemCscNano_cfg.py inputFiles=<file> globalTag=<GT of the input> [era=Run3_2026] [geometry=<name>] \
 #       [mc=True] [lcts=<module[:instance]>] [maxEvents=100] [secondaryInputFiles=<RAW parent>] [outputFile=...] \
 #       [segmentSource=auto|standalone|matches] [maxDeltaHalfStrip=N] [maxDeltaWireGroup=N] [lctBXWindow=N] \
 #       [hltProcess=HLT]
@@ -18,11 +18,11 @@
 # (it sets process.schedule, hard-codes the data GT 140X_dataRun3_v3 and has no NanoAOD output):
 #   from Configuration.AlCa.GlobalTag import GlobalTag
 #   process.GlobalTag = GlobalTag(process.GlobalTag, "<GT of the runs>", "")
-#   process.load("L1Trigger.CSCLCTRecoMuonMatching.cscLCTNano_cff")
+#   process.load("L1Trigger.GemCscNano.GemCscNano_cff")
 #   process.cscLCTRecoMuonTable.lcts = "cscTriggerPrimitiveDigis"  # TMB level (L1TdeCSCTPG uses :MPCSORTED)
 #   process.cscLCTRecoMuonTable.matcher.lctBXWindow = <N>         # emulator LCTs span BX 5-11 around 8
 #   process.out = <the NanoAODOutputModule of this file; its l1bits keep statement then names the process L1CSCTPG>
-#   process.e = cms.EndPath(process.out, process.cscLCTNanoTask)
+#   process.e = cms.EndPath(process.out, process.gemCscNanoTask)
 #   process.schedule.append(process.e)
 # (the base cfg's era is Run3; the HLT objects and bits are read from the process "HLT", the cff default);
 # run it with unpack=True l1=True run3=True runCCLUTOTMB=True runME11ILT=True useGEMAlignment=True
@@ -34,7 +34,7 @@ import importlib
 
 import FWCore.ParameterSet.Config as cms
 from FWCore.ParameterSet.VarParsing import VarParsing
-from L1Trigger.CSCLCTRecoMuonMatching.cscLCTRecoMuonTableProducer_cfi import cscLCTRecoMuonTableProducer as _defaults
+from L1Trigger.GemCscNano.cscLCTRecoMuonTableProducer_cfi import cscLCTRecoMuonTableProducer as _defaults
 
 options = VarParsing("analysis")
 options.register("globalTag", "", VarParsing.multiplicity.singleton, VarParsing.varType.string,
@@ -59,7 +59,7 @@ options.register("maxDeltaWireGroup", _defaults.matcher.maxDeltaWireGroup.value(
 options.register("lctBXWindow", _defaults.matcher.lctBXWindow.value(), VarParsing.multiplicity.singleton,
                  VarParsing.varType.int, "keep LCTs with |BX - 8| <= lctBXWindow; < 0: all (data: keep -1)")
 options.setType("outputFile", VarParsing.varType.string)  # no automatic _numEvent<N> suffix
-options.setDefault("outputFile", "cscLCTNano.root")
+options.setDefault("outputFile", "GemCscNano.root")
 options.setDefault("maxEvents", 100)
 options.parseArguments()
 
@@ -68,7 +68,7 @@ if not options.globalTag:
 lcts = options.lcts or ("simCscTriggerPrimitiveDigis" if options.mc else "muonCSCDigis:MuonCSCCorrelatedLCTDigi")
 
 era = getattr(importlib.import_module("Configuration.Eras.Era_%s_cff" % options.era), options.era)
-process = cms.Process("CSCLCTNANO", era)
+process = cms.Process("GEMCSCNANO", era)
 
 process.load("FWCore.MessageService.MessageLogger_cfi")
 process.MessageLogger.cerr.FwkReport.reportEvery = 1000
@@ -86,7 +86,7 @@ process.source = cms.Source("PoolSource",
     secondaryFileNames=cms.untracked.vstring(options.secondaryInputFiles))
 process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(options.maxEvents))
 
-process.load("L1Trigger.CSCLCTRecoMuonMatching.cscLCTNano_cff")
+process.load("L1Trigger.GemCscNano.GemCscNano_cff")
 process.cscLCTRecoMuonTable.lcts = lcts
 process.cscLCTRecoMuonTable.matcher.segmentSource = options.segmentSource
 process.cscLCTRecoMuonTable.matcher.maxDeltaHalfStrip = options.maxDeltaHalfStrip
@@ -98,13 +98,13 @@ process.patTrigger.processName = options.hltProcess
 for _module in (process.slimmedPatTrigger, process.unpackedPatTrigger):
     _module.triggerResults = cms.InputTag("TriggerResults", "", options.hltProcess)
 
-tasks = [process.cscLCTNanoTask]
+tasks = [process.gemCscNanoTask]
 if lcts.split(":")[0] == "muonCSCDigis":
     process.load("EventFilter.CSCRawToDigi.cscUnpacker_cfi")
     tasks.append(cms.Task(process.muonCSCDigis))
 if options.mc:
     process.load("SimGeneral.HepPDTESSource.pythiapdt_cfi")  # GenParticlePruner
-    tasks.append(process.cscLCTNanoMCTask)
+    tasks.append(process.gemCscNanoMCTask)
 
 process.out = cms.OutputModule("NanoAODOutputModule",
     fileName=cms.untracked.string(options.outputFile),

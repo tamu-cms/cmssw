@@ -4,7 +4,7 @@
 #   TrigObj (muon objects only), L1Mu   the central NanoAOD tables; TrigObj needs the PAT trigger chain of miniAOD, run
 #                                       here on hltTriggerSummaryAOD
 #   HLT_* and L1_* bits                 TriggerResults of the HLT process and l1bits, written by NanoAODOutputModule
-#   GenPart, SimTrack, LCTSimTrackMatch cscLCTNanoMCTask (MC only)
+#   GenPart, SimTrack, LCTSimTrackMatch gemCscNanoMCTask (MC only)
 # Module labels end in "Table" where NanoAODOutputModule must keep the product (keep nanoaodFlatTable_*Table_*_*).
 # The PAT trigger and NanoAOD modules keep their central labels (patTrigger, triggerObjectTable, l1bits, ...): this cff
 # cannot be loaded into a job that also runs the PAT or NANO steps.
@@ -13,8 +13,8 @@ import FWCore.ParameterSet.Config as cms
 from Configuration.Eras.Modifier_phase2_trigger_cff import phase2_trigger
 from DPGAnalysis.Phase2L1TNanoAOD.l1tPh2GTtables_cff import l1tP2GTTrigConvert as _l1tP2GTTrigConvert
 from DPGAnalysis.Phase2L1TNanoAOD.l1tPh2Nanotables_cff import gmtTkMuTable, staMuTable
-from L1Trigger.CSCLCTRecoMuonMatching.cscLCTRecoMuonTableProducer_cfi import cscLCTRecoMuonTableProducer
-from L1Trigger.CSCLCTRecoMuonMatching.cscLCTSimTrackTableProducer_cfi import cscLCTSimTrackTableProducer
+from L1Trigger.GemCscNano.cscLCTRecoMuonTableProducer_cfi import cscLCTRecoMuonTableProducer
+from L1Trigger.GemCscNano.cscLCTSimTrackTableProducer_cfi import cscLCTSimTrackTableProducer
 from PhysicsTools.NanoAOD.genparticles_cff import genParticleTable as _genParticleTable
 from PhysicsTools.NanoAOD.l1trig_cff import l1MuTable
 from PhysicsTools.NanoAOD.triggerObjects_cff import l1bits as _l1bits
@@ -37,7 +37,7 @@ triggerObjectTable.selections.Muon.qualityBits.append(
 # The unprefireable-event bit needs simGtExtUnprefireable, which only miniAOD makes; without it the bit is always false.
 l1bits = _l1bits.clone(storeUnprefireableBits=False)
 
-cscLCTNanoTask = cms.Task(
+gemCscNanoTask = cms.Task(
     cscLCTRecoMuonTable,
     patTrigger,
     selectedPatTrigger,
@@ -76,7 +76,7 @@ phase2_trigger.toModify(
     ),
 )
 phase2_trigger.toReplaceWith(l1bits, _l1tP2GTTrigConvert.clone())
-phase2_trigger.toReplaceWith(cscLCTNanoTask, cscLCTNanoTask.copyAndAdd(staMuTable, gmtTkMuTable))
+phase2_trigger.toReplaceWith(gemCscNanoTask, gemCscNanoTask.copyAndAdd(staMuTable, gmtTkMuTable))
 
 # MC: the generator muons with all their ancestors, written as the central GenPart table (without the miniAOD-only
 # isolation and at full float precision), and the SimTracks with their links to GenPart and to the LCTs.
@@ -93,4 +93,4 @@ cscLCTSimTrackTable = cscLCTSimTrackTableProducer.clone(
     genPartAssociation="cscLCTGenParticles",
 )
 
-cscLCTNanoMCTask = cms.Task(cscLCTGenParticles, genParticleTable, cscLCTSimTrackTable)
+gemCscNanoMCTask = cms.Task(cscLCTGenParticles, genParticleTable, cscLCTSimTrackTable)

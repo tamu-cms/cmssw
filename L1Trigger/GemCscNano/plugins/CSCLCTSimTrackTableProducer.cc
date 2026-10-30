@@ -31,7 +31,7 @@
 #include "Geometry/CSCGeometry/interface/CSCGeometry.h"
 #include "Geometry/CSCGeometry/interface/CSCLayer.h"
 #include "Geometry/Records/interface/MuonGeometryRecord.h"
-#include "L1Trigger/CSCLCTRecoMuonMatching/interface/CSCLCTKeyLayer.h"
+#include "L1Trigger/GemCscNano/interface/CSCLCTKeyLayer.h"
 #include "SimDataFormats/Track/interface/SimTrackContainer.h"
 #include "SimDataFormats/TrackingHit/interface/PSimHitContainer.h"
 #include "SimDataFormats/Vertex/interface/SimVertexContainer.h"
