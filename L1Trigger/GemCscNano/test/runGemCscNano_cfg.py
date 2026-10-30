@@ -9,7 +9,8 @@
 #
 # Every event of the input is written (tag and probe is done on the ntuple). LCTs: data default = unpacked from
 # rawDataCollector here (no data tier stores them); MC default = the emulator LCTs simCscTriggerPrimitiveDigis of the
-# DIGI step (TMB level). geometry: empty = from the global tag (Run 3); for Phase 2 the name of a
+# DIGI step (TMB level); a GEN-SIM-RAW without them (e.g. central Run3Winter25 DY) needs
+# lcts=muonCSCDigis:MuonCSCCorrelatedLCTDigi (unpacked from its RAW). geometry: empty = from the global tag (Run 3); for Phase 2 the name of a
 # Configuration/Geometry Geometry<name>Reco_cff, e.g. ExtendedRun4D121. The match windows apply to the LCT-muon and
 # (MC) the LCT-SimTrack links. lctBXWindow (default -1 = all LCTs): emulator LCTs span the readout window around BX 8,
 # data LCTs carry a 1-bit BX and must keep -1.

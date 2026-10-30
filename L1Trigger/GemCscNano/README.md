@@ -71,6 +71,9 @@ cmsRun L1Trigger/GemCscNano/test/runGemCscNano_cfg.py inputFiles=file:<file> \
 # Run-3 MC: GEN-SIM-RECO with its GEN-SIM-DIGI-RAW parent (emulator LCTs simCscTriggerPrimitiveDigis)
 cmsRun ... mc=True inputFiles=file:<GEN-SIM-RECO> secondaryInputFiles=file:<GEN-SIM-DIGI-RAW parent> \
   globalTag=<GT of the sample> era=Run3_2026
+# central Run-3 MC whose GEN-SIM-RAW has no emulator LCTs (e.g. Run3Winter25 DY): unpack them from its RAW
+cmsRun ... mc=True lcts=muonCSCDigis:MuonCSCCorrelatedLCTDigi inputFiles=file:<GEN-SIM-RECO> \
+  secondaryInputFiles=file:<GEN-SIM-RAW parent> globalTag=<GT of the sample> era=Run3_2025
 # Phase-2 MC: GEN-SIM-RECO of the Phase-2 RelVals carries simhits and LCTs
 cmsRun ... mc=True inputFiles=file:<GEN-SIM-RECO> globalTag=<GT> era=Phase2C22I13M9 geometry=ExtendedRun4D121
 ```
