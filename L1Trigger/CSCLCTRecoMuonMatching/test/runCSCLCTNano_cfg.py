@@ -21,7 +21,10 @@
 #   process.load("L1Trigger.CSCLCTRecoMuonMatching.cscLCTNano_cff")
 #   process.cscLCTRecoMuonTable.lcts = "cscTriggerPrimitiveDigis"  # TMB level (L1TdeCSCTPG uses :MPCSORTED)
 #   process.cscLCTRecoMuonTable.matcher.lctBXWindow = <N>         # emulator LCTs span BX 5-11 around 8
-#   and the NanoAODOutputModule EndPath of this file, appended to process.schedule;
+#   process.out = <the NanoAODOutputModule of this file; its l1bits keep statement then names the process L1CSCTPG>
+#   process.e = cms.EndPath(process.out, process.cscLCTNanoTask)
+#   process.schedule.append(process.e)
+# (the base cfg's era is Run3; the HLT objects and bits are read from the process "HLT", the cff default);
 # run it with unpack=True l1=True run3=True runCCLUTOTMB=True runME11ILT=True useGEMAlignment=True
 # saveEdmOutput=False [use6BitGEMCSCBendingAngle=True] inputFiles=<file>: without run3=True the cfg emulates Run-2
 # TMBs (era Run2_2018), and with the ME1/1 ILT on, empty alignment LUTs throw. The emulator configuration (one
@@ -111,6 +114,6 @@ process.out = cms.OutputModule("NanoAODOutputModule",
         "drop *",
         "keep nanoaodFlatTable_*Table_*_*",
         "keep edmTriggerResults_TriggerResults__%s" % options.hltProcess,  # HLT_* bits
-        "keep edmTriggerResults_l1bits__*",  # L1_* bits
+        "keep edmTriggerResults_l1bits__%s" % process.name_(),  # L1_* bits (not those an input RECO process kept)
     ))
 process.e = cms.EndPath(process.out, cms.Task(*tasks))
