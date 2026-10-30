@@ -74,4 +74,13 @@ namespace csclct {
     return toLCTSpace(geometry, segment.cscDetId(), ch->toGlobal(p3));
   }
 
+  Residual residual(int lctHalfStrip, int lctEighthStrip, int lctWireGroup, const KeyLayerPosition& key) {
+    Residual r;
+    r.dHS = lctHalfStrip - key.hs;
+    r.dES = float(lctEighthStrip) - key.es;
+    r.dWG = lctWireGroup - key.wg;
+    r.distance = std::abs(r.dES) / 4.f + std::abs(r.dWG);
+    return r;
+  }
+
 }  // namespace csclct

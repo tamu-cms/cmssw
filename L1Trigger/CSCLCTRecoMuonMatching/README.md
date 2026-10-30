@@ -1,6 +1,7 @@
 # L1Trigger/CSCLCTRecoMuonMatching
 
-Association of CSC LCTs with reco muons through the muons' own CSC segments: no propagation, no ΔR.
+Association of CSC LCTs with reco muons through the muons' own CSC segments (no propagation, no ΔR), and a NanoAOD-format
+ntuple of LCTs, reco muons, trigger information and simulation truth with the associations as index columns.
 
 ## Library
 
@@ -45,25 +46,47 @@ BuildFile: `<use name="L1Trigger/CSCLCTRecoMuonMatching"/>`.
 Inputs need reco and raw in the same event (data LCTs are unpacked from RAW): e.g. the ZMu RAW-RECO skim, or AOD with
 its RAW parent. MiniAOD cannot be used (no CSC segments; the segment refs in `slimmedMuons` are not usable).
 
-## Test analyzer
+## NanoAOD ntuple (`python/cscLCTNano_cff.py`, `test/runCSCLCTNano_cfg.py`)
 
-`CSCLCTRecoMuonMatchAnalyzer` (cfi `L1Trigger.CSCLCTRecoMuonMatching.cscLCTRecoMuonMatchAnalyzer_cfi`) writes the
-tree `lctMuon`: one entry per LCT (`lct_*`, `nMuons`) with vector branches for its matched muons (`mu_*`, `seg_*`,
-`key_*`, `dHS`, `dES`, `dWG`).
+One `Events` entry per input event, written by `NanoAODOutputModule`. No event or object selection: tag and probe is
+applied when the ntuple is analysed. Row indices are 0-based, −1 = none.
+
+| Collection | Content | Producer |
+|---|---|---|
+| `LCT` | every LCT the matcher considers (valid, inside `lctBXWindow`), in collection order: chamber, hs, es, wg, quality, patterns, slope (`slope6` = `getSlopeEx(6)`), bend, bx, type, gemLayer, `nMuonMatch`, (MC) `nSimTrackMatch` | `CSCLCTRecoMuonTableProducer` |
+| `Muon` | every reco muon, in collection order: central NanoAOD names where the quantity is the same (pt, eta, phi, charge, isGlobal, isTracker, isStandalone, isPFcand, looseId, mediumId, tightId, pfRelIso04_all, dxy, dz, nStations), standalone-track kinematics, `nCSCSegments`, `nLCTMatch` | `CSCLCTRecoMuonTableProducer` |
+| `LCTMuonMatch` | one row per matched LCT–muon pair, grouped by LCT, closest muon first: `lctIdx`, `muonIdx`, the segment (source, ring, hits, χ²/ndof, time), its key-layer position and the residuals `dHS`, `dES`, `dWG` | `CSCLCTRecoMuonTableProducer` |
+| `TrigObj` | HLT muon objects with `filterBits`, as in the central NanoAOD (Run 3: its muon selection; Phase 2: `hltPhase2L3MuonCandidates`, bits 1 = Iso, 3 = 1mu, 10 = Mu50 set by the final filters of `HLT_IsoMu24_FromL1TkMuon` / `HLT_Mu50_FromL1TkMuon`) | PAT trigger chain + `triggerObjectTable` |
+| `L1Mu` | L1 muons (legacy GMT, BX −2..2) | central `l1MuTable` |
+| `L1gmtMuon`, `L1gmtTkMuon` | Phase 2 only: Phase-2 GMT standalone and tracker muons | `DPGAnalysis/Phase2L1TNanoAOD` |
+| `HLT_*`, `L1_*` | HLT path bits of the HLT process; L1 bits (Run 3 from `gtStage2Digis`, Phase 2 from the Phase-2 GT) | `NanoAODOutputModule`, `l1bits` |
+| `GenPart` | MC: generator muons and all their ancestors, central GenPart columns at full precision | `GenParticlePruner` + central `genParticleTable` |
+| `SimTrack` | MC: muon SimTracks and every SimTrack with a CSC simhit (signal only): kinematics, vertex, `genPartIdx` (row in GenPart), `parentIdx`, `nCSCSimHits`, `nLCTMatch` | `CSCLCTSimTrackTableProducer` |
+| `LCTSimTrackMatch` | MC: one row per LCT–SimTrack pair within ±6 HS / ±2 WG, grouped by LCT, closest first: `lctIdx`, `simTrackIdx`, the simhit key-layer position (the track's own layer-3 simhit, else the line through its simhits in the chamber) and the residuals | `CSCLCTSimTrackTableProducer` |
 
 ```bash
-cmsRun L1Trigger/CSCLCTRecoMuonMatching/test/runCSCLCTRecoMuonMatch_cfg.py \
-  inputFiles=file:<ZMu RAW-RECO file> globalTag=<GT of the runs> era=Run3_2026 maxEvents=1000
+# data: ZMu RAW-RECO (LCTs unpacked here)
+cmsRun L1Trigger/CSCLCTRecoMuonMatching/test/runCSCLCTNano_cfg.py inputFiles=file:<file> \
+  globalTag=<GT of the runs> era=Run3_2026 maxEvents=1000
+# Run-3 MC: GEN-SIM-RECO with its GEN-SIM-DIGI-RAW parent (emulator LCTs simCscTriggerPrimitiveDigis)
+cmsRun ... mc=True inputFiles=file:<GEN-SIM-RECO> secondaryInputFiles=file:<GEN-SIM-DIGI-RAW parent> \
+  globalTag=<GT of the sample> era=Run3_2026
+# Phase-2 MC: GEN-SIM-RECO of the Phase-2 RelVals carries simhits and LCTs
+cmsRun ... mc=True inputFiles=file:<GEN-SIM-RECO> globalTag=<GT> era=Phase2C22I13M9 geometry=ExtendedRun4D121
 ```
 
-The header of the cfg shows how to run it on emulator LCTs (GT override and emulator options included).
+The header of the cfg shows how to write the ntuple from emulator LCTs re-emulated from data. Table names have no
+underscore and the link columns follow the NanoAOD `<target>Idx` convention; coffea's `NanoAODSchema` does not know the
+link tables, so they are read as plain collections.
 
-## Known limitations (smoke test on one ZMu RAW-RECO file of run 403567 with ±2 HS / ±2 WG windows, provisional)
+## Known limitations
 
-- `standalone` and `matches` pick the same segment in 95.8% of the chambers both have.
-- In ME+1/1a and ME−1/1b mean ΔES is ≈ 0.5 eighth-strip lower than in ME+1/1b and ME−1/1a (unexplained).
-- About 0.35% of segments have no valid key position (no layer-3 rechit and a projection just outside the wire
-  plane); they cannot match.
+- Smoke test on one ZMu RAW-RECO file of run 403567 (±2 HS / ±2 WG windows, provisional): `standalone` and `matches`
+  pick the same segment in 95.8% of the chambers both have; in ME+1/1a and ME−1/1b mean ΔES is ≈ 0.5 eighth-strip
+  lower than in ME+1/1b and ME−1/1a; about 0.35% of segments have no valid key position (no layer-3 rechit and a
+  projection just outside the wire plane) and cannot match.
 - GEM-only LCT types (CLCT-2GEM, ALCT-2GEM) take a coordinate from GEM: expect larger residuals for them.
 - A crossed chamber without a segment gives no candidate: an LCT-efficiency denominator needs the chamber matches
   without segments, which this matcher does not provide.
+- Phase 2: `L1Mu` and the `l1*` columns of `TrigObj` come from the legacy GMT emulation; the Phase-2 L1 muons are in
+  `L1gmtMuon` / `L1gmtTkMuon`.

@@ -1,14 +1,21 @@
-<use name="CommonTools/UtilAlgos"/>
+<use name="DataFormats/Common"/>
 <use name="DataFormats/CSCDigi"/>
 <use name="DataFormats/CSCRecHit"/>
+<use name="DataFormats/HepMCCandidate"/>
+<use name="DataFormats/MuonDetId"/>
 <use name="DataFormats/MuonReco"/>
+<use name="DataFormats/NanoAOD"/>
+<use name="DataFormats/TrackReco"/>
+<use name="DataFormats/VertexReco"/>
 <use name="FWCore/Framework"/>
 <use name="FWCore/ParameterSet"/>
-<use name="FWCore/ServiceRegistry"/>
+<use name="FWCore/Utilities"/>
 <use name="Geometry/CSCGeometry"/>
 <use name="Geometry/Records"/>
 <use name="L1Trigger/CSCLCTRecoMuonMatching"/>
-<use name="root"/>
+<use name="SimDataFormats/Track"/>
+<use name="SimDataFormats/TrackingHit"/>
+<use name="SimDataFormats/Vertex"/>
 <library file="*.cc" name="L1TriggerCSCLCTRecoMuonMatchingPlugins">
   <flags EDM_PLUGIN="1"/>
 </library>

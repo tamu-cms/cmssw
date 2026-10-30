@@ -50,6 +50,15 @@ namespace csclct {
   // Segment (chamber frame, origin at chamber z = 0) projected onto the plane of layer 3.
   KeyLayerPosition fromSegmentProjection(const CSCGeometry& geometry, const CSCSegment& segment);
 
+  // LCT - key, LCT units. distance = |dES| / 4 + |dWG| orders the matches.
+  struct Residual {
+    int dHS;
+    float dES;
+    int dWG;
+    float distance;
+  };
+  Residual residual(int lctHalfStrip, int lctEighthStrip, int lctWireGroup, const KeyLayerPosition& key);
+
 }  // namespace csclct
 
 #endif

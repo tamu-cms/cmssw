@@ -162,20 +162,11 @@ std::vector<CSCLCTRecoMuonMatcher::LCTMatch> CSCLCTRecoMuonMatcher::match(const 
       LCTMatch lm{chamber, &*lct, {}};
       if (cand != candidates.end()) {
         for (const Candidate& c : cand->second) {
-          const int dHS = int(lct->getStrip()) - c.key.hs;
-          const float dES = float(lct->getStrip(8)) - c.key.es;
-          const int dWG = int(lct->getKeyWG()) - c.key.wg;
-          if (std::abs(dHS) > config_.maxDeltaHalfStrip || std::abs(dWG) > config_.maxDeltaWireGroup)
+          const csclct::Residual r = csclct::residual(lct->getStrip(), lct->getStrip(8), lct->getKeyWG(), c.key);
+          if (std::abs(r.dHS) > config_.maxDeltaHalfStrip || std::abs(r.dWG) > config_.maxDeltaWireGroup)
             continue;
-          lm.muons.push_back({c.muonIndex,
-                              c.segment,
-                              c.source,
-                              c.key,
-                              c.keyFromRecHit,
-                              dHS,
-                              dES,
-                              dWG,
-                              std::abs(dES) / 4.f + std::abs(dWG)});
+          lm.muons.push_back(
+              {c.muonIndex, c.segment, c.source, c.key, c.keyFromRecHit, r.dHS, r.dES, r.dWG, r.distance});
         }
         // Closest first; a muon with several segments within the window keeps only its closest one.
         std::stable_sort(lm.muons.begin(), lm.muons.end(), [](const MuonMatch& a, const MuonMatch& b) {
