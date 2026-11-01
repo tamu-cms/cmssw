@@ -1,10 +1,12 @@
 // NanoAOD tables of CSC LCTs, reco muons and their CSCLCTRecoMuonMatcher associations (one entry per event):
 //   LCT           every LCT the matcher considers (valid, inside lctBXWindow), in collection order;
-//   Muon          every reco muon of the collection, in collection order;
+//   Muon          the reco muons passing muonCut (default pT > 10 GeV and the medium or tight cut-based ID), in
+//                 collection order; only these muons are matched;
 //   LCTMuonMatch  one row per matched LCT-muon pair (rows of the LCT and Muon tables, segment, key-layer residuals),
 //                 grouped by LCT, closest muon first.
-// No event or object selection is applied: tag and probe is left to the analysis of the ntuple.
+// No event selection is applied: tag and probe is left to the analysis of the ntuple.
 
+#include "CommonTools/Utils/interface/StringCutObjectSelector.h"
 #include "DataFormats/CSCDigi/interface/CSCCorrelatedLCTDigiCollection.h"
 #include "DataFormats/CSCRecHit/interface/CSCSegment.h"
 #include "DataFormats/MuonReco/interface/Muon.h"
@@ -72,6 +74,7 @@ private:
   const edm::EDGetTokenT<reco::MuonCollection> muonToken_;
   const edm::EDGetTokenT<reco::VertexCollection> vertexToken_;
   const edm::ESGetToken<CSCGeometry, MuonGeometryRecord> cscGeomToken_;
+  const StringCutObjectSelector<reco::Muon> muonCut_;
   const CSCLCTRecoMuonMatcher matcher_;
 };
 
@@ -80,6 +83,7 @@ CSCLCTRecoMuonTableProducer::CSCLCTRecoMuonTableProducer(const edm::ParameterSet
       muonToken_(consumes(ps.getParameter<edm::InputTag>("muons"))),
       vertexToken_(consumes(ps.getParameter<edm::InputTag>("vertices"))),
       cscGeomToken_(esConsumes()),
+      muonCut_(ps.getParameter<std::string>("muonCut")),
       matcher_(ps.getParameter<edm::ParameterSet>("matcher")) {
   produces<nanoaod::FlatTable>("lct");
   produces<nanoaod::FlatTable>("muon");
@@ -91,6 +95,8 @@ void CSCLCTRecoMuonTableProducer::fillDescriptions(edm::ConfigurationDescription
   desc.add<edm::InputTag>("lcts", edm::InputTag("muonCSCDigis", "MuonCSCCorrelatedLCTDigi"))
       ->setComment("LCT collection: unpacked data LCTs, or emulator LCTs (then consider matcher.lctBXWindow)");
   desc.add<edm::InputTag>("muons", edm::InputTag("muons"));
+  desc.add<std::string>("muonCut", "pt > 10 && (passed(\"CutBasedIdMedium\") || passed(\"CutBasedIdTight\"))")
+      ->setComment("reco::Muon selection: only these muons are stored and matched");
   desc.add<edm::InputTag>("vertices", edm::InputTag("offlinePrimaryVertices"))
       ->setComment("Muon_dxy and Muon_dz are computed w.r.t. the first vertex, as Muon_tightId in RECO");
   edm::ParameterSetDescription matcher;
@@ -100,7 +106,10 @@ void CSCLCTRecoMuonTableProducer::fillDescriptions(edm::ConfigurationDescription
 }
 
 void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSetup& setup) {
-  const auto& muons = event.get(muonToken_);
+  reco::MuonCollection muons;  // the muons passing muonCut, in collection order: the Muon rows
+  for (const auto& mu : event.get(muonToken_))
+    if (muonCut_(mu))
+      muons.push_back(mu);
   const auto& vertices = event.get(vertexToken_);
   if (vertices.empty())
     throw cms::Exception("ProductNotValid") << "empty vertex collection: Muon_dxy and Muon_dz need a primary vertex";
@@ -182,7 +191,9 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
     muonRows[m] = m;
   const auto mu = [&muons](size_t m) -> const reco::Muon& { return muons[m]; };
   auto muonTable = std::make_unique<nanoaod::FlatTable>(muons.size(), "Muon", false);
-  muonTable->setDoc("all reco muons, in the order of the muon collection");
+  muonTable->setDoc(
+      "reco muons passing muonCut (default pT > 10 GeV and medium or tight cut-based ID), in the order "
+      "of the muon collection");
   addColumn<float>(*muonTable, "pt", muonRows, [&](size_t m) { return mu(m).pt(); }, "pt");
   addColumn<float>(*muonTable, "eta", muonRows, [&](size_t m) { return mu(m).eta(); }, "eta");
   addColumn<float>(*muonTable, "phi", muonRows, [&](size_t m) { return mu(m).phi(); }, "phi");

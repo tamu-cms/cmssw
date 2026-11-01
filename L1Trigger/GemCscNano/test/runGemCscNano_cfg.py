@@ -46,6 +46,8 @@ options.register("geometry", "", VarParsing.multiplicity.singleton, VarParsing.v
                  "empty: geometry from the global tag; else Configuration.Geometry.Geometry<geometry>Reco_cff")
 options.register("mc", False, VarParsing.multiplicity.singleton, VarParsing.varType.bool,
                  "simulation: add GenPart, SimTrack and LCTSimTrackMatch")
+options.register("muonCut", _defaults.muonCut.value(), VarParsing.multiplicity.singleton, VarParsing.varType.string,
+                 "reco::Muon selection: only these muons are stored (Muon) and matched")
 options.register("lcts", "", VarParsing.multiplicity.singleton, VarParsing.varType.string,
                  "LCT collection; empty: data muonCSCDigis:MuonCSCCorrelatedLCTDigi (unpacked here), "
                  "MC simCscTriggerPrimitiveDigis")
@@ -89,6 +91,7 @@ process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(options.maxEven
 
 process.load("L1Trigger.GemCscNano.GemCscNano_cff")
 process.cscLCTRecoMuonTable.lcts = lcts
+process.cscLCTRecoMuonTable.muonCut = options.muonCut
 process.cscLCTRecoMuonTable.matcher.segmentSource = options.segmentSource
 process.cscLCTRecoMuonTable.matcher.maxDeltaHalfStrip = options.maxDeltaHalfStrip
 process.cscLCTRecoMuonTable.matcher.maxDeltaWireGroup = options.maxDeltaWireGroup

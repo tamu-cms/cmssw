@@ -33,7 +33,8 @@ BuildFile: `<use name="L1Trigger/GemCscNano"/>`.
   muon in each crossed chamber), `auto` (standalone when available, otherwise matches).
 - `lctBXWindow`: keep LCTs with |BX − 8| ≤ window; < 0 = no selection. Data LCTs carry a 1-bit BX, so keep it < 0
   for them; emulator LCTs span the readout window around BX 8.
-- Muon selection is left to the caller (all muons of the collection are matched).
+- Muon selection is left to the caller of the library (all muons of the collection given to `match()` are matched);
+  the ntuple producer passes only the muons of its `muonCut`.
 - `Config` has no default values. The defaults of `fillPSetDescription` are ±6 half-strips and ±2 wire groups
   (deliberately loose, to be tightened from the residual distributions), `segmentSource` `auto` (a proposal of the
   matching study) and `lctBXWindow` −1 (no BX selection, as data LCTs need). Negative windows are rejected.
@@ -48,13 +49,14 @@ its RAW parent. MiniAOD cannot be used (no CSC segments; the segment refs in `sl
 
 ## NanoAOD ntuple (`python/GemCscNano_cff.py`, `test/runGemCscNano_cfg.py`)
 
-One `Events` entry per input event, written by `NanoAODOutputModule`. No event or object selection: tag and probe is
-applied when the ntuple is analysed. Row indices are 0-based, −1 = none.
+One `Events` entry per input event, written by `NanoAODOutputModule`. No event selection, and no LCT selection beyond
+`lctBXWindow`; the reco muons are preselected by `muonCut` (cfg option of the same name). Tag and probe is applied when
+the ntuple is analysed. Row indices are 0-based, −1 = none.
 
 | Collection | Content | Producer |
 |---|---|---|
 | `LCT` | every LCT the matcher considers (valid, inside `lctBXWindow`), in collection order: chamber, hs, es, wg, quality, patterns, slope (`slope6` = `getSlopeEx(6)`), bend, bx, type, gemLayer, `nMuonMatch`, (MC) `nSimTrackMatch` | `CSCLCTRecoMuonTableProducer` |
-| `Muon` | every reco muon, in collection order: central NanoAOD names where the quantity is the same (pt, eta, phi, charge, isGlobal, isTracker, isStandalone, isPFcand, looseId, mediumId, tightId, pfRelIso04_all, dxy, dz, nStations), standalone-track kinematics (0 if none: `standalonePt == 0`), `nCSCSegments`, `nLCTMatch` | `CSCLCTRecoMuonTableProducer` |
+| `Muon` | the reco muons passing `muonCut` (default `pt > 10 && (passed("CutBasedIdMedium") || passed("CutBasedIdTight"))`), in collection order; only they are matched: central NanoAOD names where the quantity is the same (pt, eta, phi, charge, isGlobal, isTracker, isStandalone, isPFcand, looseId, mediumId, tightId, pfRelIso04_all, dxy, dz, nStations), standalone-track kinematics (0 if none: `standalonePt == 0`), `nCSCSegments`, `nLCTMatch` | `CSCLCTRecoMuonTableProducer` |
 | `LCTMuonMatch` | one row per matched LCT–muon pair, grouped by LCT, closest muon first: `lctIdx`, `muonIdx`, the segment (source, ring, hits, χ²/ndof, time), its key-layer position and the residuals `dHS`, `dES`, `dWG` | `CSCLCTRecoMuonTableProducer` |
 | `TrigObj` | HLT muon objects with `filterBits`, as in the central NanoAOD (Run 3: its muon selection; Phase 2: `hltPhase2L3MuonCandidates`, bits 1 = Iso, 3 = 1mu, 10 = Mu50 set by the final filters of `HLT_IsoMu24_FromL1TkMuon` / `HLT_Mu50_FromL1TkMuon`, only objects with a bit are kept), plus bit 14 = the object passed the last filter of `HLT_IsoMu24_v*` (Phase 2: `HLT_IsoMu24_FromL1TkMuon`); the central bits 1 and 3 also match the final filters of IsoMu20 and IsoMu27 | PAT trigger chain + `triggerObjectTable` |
 | `L1Mu` | L1 muons (legacy GMT, BX −2..2) | central `l1MuTable` |
