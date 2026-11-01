@@ -5,7 +5,7 @@
 #   cmsRun runGemCscNano_cfg.py inputFiles=<file> globalTag=<GT of the input> [era=Run3_2026] [geometry=<name>] \
 #       [mc=True] [lcts=<module[:instance]>] [maxEvents=100] [secondaryInputFiles=<RAW parent>] [outputFile=...] \
 #       [segmentSource=auto|standalone|matches] [maxDeltaHalfStrip=N] [maxDeltaWireGroup=N] [lctBXWindow=N] \
-#       [hltProcess=HLT]
+#       [hltProcess=HLT] [muonCut=<reco::Muon cut; empty = all muons>]
 #
 # Every event of the input is written (tag and probe is done on the ntuple). LCTs: data default = unpacked from
 # rawDataCollector here (no data tier stores them); MC default = the emulator LCTs simCscTriggerPrimitiveDigis of the

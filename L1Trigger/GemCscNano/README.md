@@ -50,7 +50,7 @@ its RAW parent. MiniAOD cannot be used (no CSC segments; the segment refs in `sl
 ## NanoAOD ntuple (`python/GemCscNano_cff.py`, `test/runGemCscNano_cfg.py`)
 
 One `Events` entry per input event, written by `NanoAODOutputModule`. No event selection, and no LCT selection beyond
-`lctBXWindow`; the reco muons are preselected by `muonCut` (cfg option of the same name). Tag and probe is applied when
+`lctBXWindow`; the reco muons are preselected by `muonCut` (cfg option of the same name; an empty cut keeps all muons). Tag and probe is applied when
 the ntuple is analysed. Row indices are 0-based, −1 = none.
 
 | Collection | Content | Producer |

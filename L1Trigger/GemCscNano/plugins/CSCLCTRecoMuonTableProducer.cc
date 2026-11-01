@@ -185,7 +185,7 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       [](const LCTMatch& m) { return m.muons.size(); },
       "number of LCTMuonMatch rows of this LCT");
 
-  // Muon rows are the muon collection itself, so a row index is the muon's index in the collection.
+  // Muon rows are the selected muons, so a row index is the muon's index in the selected (muonCut) collection.
   std::vector<size_t> muonRows(muons.size());
   for (size_t m = 0; m < muons.size(); ++m)
     muonRows[m] = m;
