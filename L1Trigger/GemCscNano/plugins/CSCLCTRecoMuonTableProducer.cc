@@ -412,7 +412,7 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "else the standalone track) propagated by reco (TrackDetectorAssociator) to every CSC chamber whose edge "
       "distances are both below 5 cm (muons1stStep; none if no chamber within dR 0.2 of the track has a segment or "
       "hit, preselectMuonTracks); in muon order, then in the order of matches(). ME1/1: normally a ring-1 (ME1b) and "
-      "a ring-4 (ME1a) row with the same propagated state and edges; keyInStripPlane tells which ring the track "
+      "a ring-4 (ME1a) row with nearly the same state and edges; keyInStripPlane tells which ring the track "
       "crosses");
   addColumn<int16_t>(*chamberTable, "muonIdx", chambers, [](const ChamberRow& r) { return r.muonIdx; }, "row in Muon");
   addColumn<int16_t>(*chamberTable, "endcap", chambers, [](const ChamberRow& r) { return r.id.zendcap(); }, "+1 or -1");
@@ -422,8 +422,8 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "ring",
       chambers,
       [](const ChamberRow& r) { return r.id.ring(); },
-      "ring of the chamber match (ME1/1: 1 = ME1b and 4 = ME1a, normally both rows for a crossing, with the same state "
-      "and edges; ME1/1 LCTs are in ring 1)");
+      "ring of the chamber match (ME1/1: 1 = ME1b and 4 = ME1a, normally both rows for a crossing, with nearly the "
+      "same state and edges; ME1/1 LCTs are in ring 1)");
   addColumn<int16_t>(*chamberTable, "chamber", chambers, [](const ChamberRow& r) { return r.id.chamber(); }, "chamber");
   addColumn<float>(
       *chamberTable,
@@ -521,7 +521,7 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       chambers,
       [](const ChamberRow& r) { return r.inStripPlane; },
       "the layer-3 point lies inside the y range of this ring's strip plane (ME1/1: the ring the track crosses; "
-      "neither row near the ME1a/ME1b cut)");
+      "neither row beyond the outer ends of ME1/1)");
   addColumn<float>(
       *chamberTable, "eta", chambers, [](const ChamberRow& r) { return r.eta; }, "eta of the layer-3 point");
   addColumn<float>(
