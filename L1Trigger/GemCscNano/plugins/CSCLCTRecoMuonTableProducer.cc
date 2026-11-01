@@ -410,7 +410,10 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
   chamberTable->setDoc(
       "CSC chamber matches of the stored muons (reco::Muon::matches()): the muon's track (the inner track if any, "
       "else the standalone track) propagated by reco (TrackDetectorAssociator) to every CSC chamber whose edge "
-      "distances are both below 5 cm (muons1stStep); in muon order, then in the order of matches()");
+      "distances are both below 5 cm (muons1stStep; none if no chamber within dR 0.2 of the track has a segment or "
+      "hit, preselectMuonTracks); in muon order, then in the order of matches(). ME1/1: normally a ring-1 (ME1b) and "
+      "a ring-4 (ME1a) row with the same propagated state and edges; keyInStripPlane tells which ring the track "
+      "crosses");
   addColumn<int16_t>(*chamberTable, "muonIdx", chambers, [](const ChamberRow& r) { return r.muonIdx; }, "row in Muon");
   addColumn<int16_t>(*chamberTable, "endcap", chambers, [](const ChamberRow& r) { return r.id.zendcap(); }, "+1 or -1");
   addColumn<int16_t>(*chamberTable, "station", chambers, [](const ChamberRow& r) { return r.id.station(); }, "station");
@@ -419,7 +422,8 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "ring",
       chambers,
       [](const ChamberRow& r) { return r.id.ring(); },
-      "ring of the chamber match (ME1/1: 1 = ME1b, 4 = ME1a, one row per ring matched; ME1/1 LCTs are in ring 1)");
+      "ring of the chamber match (ME1/1: 1 = ME1b and 4 = ME1a, normally both rows for a crossing, with the same state "
+      "and edges; ME1/1 LCTs are in ring 1)");
   addColumn<int16_t>(*chamberTable, "chamber", chambers, [](const ChamberRow& r) { return r.id.chamber(); }, "chamber");
   addColumn<float>(
       *chamberTable,
@@ -454,32 +458,34 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "dXdZErr",
       chambers,
       [](const ChamberRow& r) { return r.match->dXdZErr; },
-      "propagation error on dx/dz");
+      "propagation error on dx/dz (0 if the variance is not positive)");
   addColumn<float>(
       *chamberTable,
       "dYdZErr",
       chambers,
       [](const ChamberRow& r) { return r.match->dYdZErr; },
-      "propagation error on dy/dz");
+      "propagation error on dy/dz (0 if the variance is not positive)");
   addColumn<float>(
       *chamberTable,
       "edgeX",
       chambers,
       [](const ChamberRow& r) { return r.match->edgeX; },
-      "distance in x of the propagated position to the edge of the layer-1 wire plane, cm (< 0: inside)");
+      "distance in x of the propagated position to the edge of the chamber type's odd-layer wire plane, cm (< 0: "
+      "inside; ME1/1: the whole ME1/1 plane, the same for both rings)");
   addColumn<float>(
       *chamberTable,
       "edgeY",
       chambers,
       [](const ChamberRow& r) { return r.match->edgeY; },
-      "distance in y of the propagated position to the edge of the layer-1 wire plane, cm (< 0: inside)");
+      "distance in y of the propagated position to the edge of the chamber type's odd-layer wire plane, cm (< 0: "
+      "inside; ME1/1: the whole ME1/1 plane, the same for both rings)");
   addColumn<int16_t>(
       *chamberTable,
       "nDigisInRange",
       chambers,
       [](const ChamberRow& r) { return r.match->nDigisInRange; },
-      "fired strip digis (ADC > pedestal + 13.3) in the 6 layers within 25 cm in x of the propagated "
-      "position (reco MuonShowerDigiFiller; 0 when reco did not fill it)");
+      "fired strip digis (an ADC sample > pedestal + 13.3) in layers 1-6 of this ring within 25 cm in x of the "
+      "propagated position, strip x at the track's y (reco MuonShowerDigiFiller; 0 also when reco did not fill it)");
   addColumn<int16_t>(
       *chamberTable,
       "keyHS",
@@ -493,26 +499,29 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "keyES",
       chambers,
       [](const ChamberRow& r) { return r.key.es; },
-      "the same point: eighth-strip, CCLUT convention (4*keyHS at the half-strip centre), not clamped");
+      "the same point: eighth-strip, CCLUT convention (4*keyHS at the half-strip centre); saturates at -2 and "
+      "8N-2 (ME1a: 510 and 894) when the point is outside the strips (strip coordinate clamped to [0, N])");
   addColumn<int16_t>(
       *chamberTable,
       "keyWG",
       chambers,
       [](const ChamberRow& r) { return r.key.wg; },
-      "the same point: wire group of the nearest wire, 0-based; -1 outside the wire plane or at a dead wire");
+      "the same point: wire group of the nearest wire, 0-based; -1 beyond the first or last wire or at a dead "
+      "wire (not bounded along the wires)");
   addColumn<bool>(
       *chamberTable,
       "keyValid",
       chambers,
       [](const ChamberRow& r) { return r.key.valid(); },
-      "the layer-3 point is inside the strips (0 < strip coordinate < N) and has a wire group");
+      "the layer-3 point has a strip coordinate inside (0, N) and a wire group; the ring's y range is not "
+      "tested (ME1/1: often true in both rows, use keyInStripPlane)");
   addColumn<bool>(
       *chamberTable,
       "keyInStripPlane",
       chambers,
       [](const ChamberRow& r) { return r.inStripPlane; },
-      "the layer-3 point lies inside the y range of this ring's strip plane (ME1/1: the ring the track "
-      "crosses)");
+      "the layer-3 point lies inside the y range of this ring's strip plane (ME1/1: the ring the track crosses; "
+      "neither row near the ME1a/ME1b cut)");
   addColumn<float>(
       *chamberTable, "eta", chambers, [](const ChamberRow& r) { return r.eta; }, "eta of the layer-3 point");
   addColumn<float>(
@@ -528,7 +537,8 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "hasMatcherSegment",
       chambers,
       [](const ChamberRow& r) { return r.hasMatcherSegment; },
-      "the matcher's segmentSource gives this muon a segment in this chamber (ring included)");
+      "the matcher's segmentSource gives this muon a segment in this chamber (ring included), with or without a "
+      "valid key position (the matcher skips those without)");
   addColumn<bool>(
       *chamberTable,
       "hasStandaloneSegment",
