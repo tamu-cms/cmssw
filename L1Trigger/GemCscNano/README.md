@@ -58,6 +58,7 @@ the ntuple is analysed. Row indices are 0-based, −1 = none.
 | `LCT` | every LCT the matcher considers (valid, inside `lctBXWindow`), in collection order: chamber, hs, es, wg, quality, patterns, slope (`slope6` = `getSlopeEx(6)`), bend, bx, type, gemLayer, `nMuonMatch`, (MC) `nSimTrackMatch` | `CSCLCTRecoMuonTableProducer` |
 | `Muon` | the reco muons passing `muonCut` (default `pt > 10 && (passed("CutBasedIdMedium") || passed("CutBasedIdTight"))`), in collection order; only they are matched: central NanoAOD names where the quantity is the same (pt, eta, phi, charge, isGlobal, isTracker, isStandalone, isPFcand, looseId, mediumId, tightId, pfRelIso04_all, dxy, dz, nStations), standalone-track kinematics (0 if none: `standalonePt == 0`), `nCSCSegments`, `nLCTMatch` | `CSCLCTRecoMuonTableProducer` |
 | `LCTMuonMatch` | one row per matched LCT–muon pair, grouped by LCT, closest muon first: `lctIdx`, `muonIdx`, the segment (source, ring, hits, χ²/ndof, time), its key-layer position and the residuals `dHS`, `dES`, `dWG` | `CSCLCTRecoMuonTableProducer` |
+| `MuonCSCChamber` | one row per CSC chamber match (`reco::Muon::matches()`) of each stored muon, in muon order: `muonIdx`, chamber (ME1/1: one row per ring matched, ring 1 = ME1b, ring 4 = ME1a); the track propagated by reco (inner track if any, else standalone; `TrackDetectorAssociator`) on the chamber surface: `x`, `y`, `dXdZ`, `dYdZ` and their errors, `edgeX`, `edgeY` (< 0: inside), `nDigisInRange`; that position carried to layer 3 in LCT units: `keyHS`, `keyES`, `keyWG`, `keyValid`, `keyInStripPlane`, `eta`, `phi`; the segments there: `nSegmentMatches`, `hasMatcherSegment` (the configured `segmentSource`), `hasStandaloneSegment`, `hasArbitratedSegment` | `CSCLCTRecoMuonTableProducer` |
 | `TrigObj` | HLT muon objects with `filterBits`, as in the central NanoAOD (Run 3: its muon selection; Phase 2: `hltPhase2L3MuonCandidates`, bits 1 = Iso, 3 = 1mu, 10 = Mu50 set by the final filters of `HLT_IsoMu24_FromL1TkMuon` / `HLT_Mu50_FromL1TkMuon`, only objects with a bit are kept), plus bit 14 = the object passed the last filter of `HLT_IsoMu24_v*` (Phase 2: `HLT_IsoMu24_FromL1TkMuon`); the central bits 1 and 3 also match the final filters of IsoMu20 and IsoMu27 | PAT trigger chain + `triggerObjectTable` |
 | `L1Mu` | L1 muons (legacy GMT, BX −2..2) | central `l1MuTable` |
 | `L1gmtMuon`, `L1gmtTkMuon` | Phase 2 only: Phase-2 GMT standalone and tracker muons | `DPGAnalysis/Phase2L1TNanoAOD` |
@@ -93,7 +94,8 @@ link tables, so they are read as plain collections.
   lower than in ME+1/1b and ME−1/1a; about 0.35% of segments have no valid key position (no layer-3 rechit and a
   projection just outside the wire plane) and cannot match.
 - GEM-only LCT types (CLCT-2GEM, ALCT-2GEM) take a coordinate from GEM: expect larger residuals for them.
-- A crossed chamber without a segment gives no candidate: an LCT-efficiency denominator needs the chamber matches
-  without segments, which this matcher does not provide.
+- A crossed chamber without a segment gives no candidate. The matcher does not use the propagated position; the
+  ntuple stores it per chamber in `MuonCSCChamber`, which also gives the crossed chambers for an LCT-efficiency
+  denominator (a chamber is crossed when `edgeX < 0` and `edgeY < 0`).
 - Phase 2: `L1Mu` and the `l1*` columns of `TrigObj` come from the legacy GMT emulation; the Phase-2 L1 muons are in
   `L1gmtMuon` / `L1gmtTkMuon`.

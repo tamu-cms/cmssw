@@ -9,7 +9,10 @@
 
 #include "DataFormats/GeometryVector/interface/GlobalPoint.h"
 #include "DataFormats/GeometryVector/interface/LocalPoint.h"
+#include "DataFormats/GeometryVector/interface/LocalVector.h"
 #include "DataFormats/MuonDetId/interface/CSCDetId.h"
+
+#include <optional>
 
 class CSCGeometry;
 class CSCLayer;
@@ -46,6 +49,13 @@ namespace csclct {
 
   // Key-layer position measured by a layer-3 rechit; the wire group is the rechit's.
   KeyLayerPosition fromKeyLayerRecHit(const CSCGeometry& geometry, const CSCRecHit2D& rechit);
+
+  // Where a straight line (chamber frame of chamberId: point p0, direction d) crosses the plane of layer 3 of that
+  // chamber; none if the chamber is unknown or the line is parallel to the layer (|d.z| < 1e-6).
+  std::optional<GlobalPoint> lineAtKeyLayer(const CSCGeometry& geometry,
+                                            const CSCDetId& chamberId,
+                                            const LocalPoint& p0,
+                                            const LocalVector& d);
 
   // Segment (chamber frame, origin at chamber z = 0) projected onto the plane of layer 3.
   KeyLayerPosition fromSegmentProjection(const CSCGeometry& geometry, const CSCSegment& segment);

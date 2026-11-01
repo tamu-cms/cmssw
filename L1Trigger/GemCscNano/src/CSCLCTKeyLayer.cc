@@ -59,19 +59,25 @@ namespace csclct {
     return r;
   }
 
-  KeyLayerPosition fromSegmentProjection(const CSCGeometry& geometry, const CSCSegment& segment) {
-    const CSCChamber* ch = geometry.chamber(segment.cscDetId());
+  std::optional<GlobalPoint> lineAtKeyLayer(const CSCGeometry& geometry,
+                                            const CSCDetId& chamberId,
+                                            const LocalPoint& p0,
+                                            const LocalVector& d) {
+    const CSCChamber* ch = geometry.chamber(chamberId);
     if (ch == nullptr)
-      return KeyLayerPosition();
+      return std::nullopt;
     const CSCLayer* L3 = ch->layer(CSCConstants::KEY_CLCT_LAYER);
-    const LocalVector d = segment.localDirection();
     if (L3 == nullptr || std::abs(d.z()) < 1e-6f)
-      return KeyLayerPosition();
-    const LocalPoint p0 = segment.localPosition();
+      return std::nullopt;
     const float z3 = ch->toLocal(L3->toGlobal(LocalPoint(0.f, 0.f, 0.f))).z();
     const float t = (z3 - p0.z()) / d.z();
     const LocalPoint p3(p0.x() + t * d.x(), p0.y() + t * d.y(), z3);
-    return toLCTSpace(geometry, segment.cscDetId(), ch->toGlobal(p3));
+    return ch->toGlobal(p3);
+  }
+
+  KeyLayerPosition fromSegmentProjection(const CSCGeometry& geometry, const CSCSegment& segment) {
+    const auto p3 = lineAtKeyLayer(geometry, segment.cscDetId(), segment.localPosition(), segment.localDirection());
+    return p3 ? toLCTSpace(geometry, segment.cscDetId(), *p3) : KeyLayerPosition();
   }
 
   Residual residual(int lctHalfStrip, int lctEighthStrip, int lctWireGroup, const KeyLayerPosition& key) {

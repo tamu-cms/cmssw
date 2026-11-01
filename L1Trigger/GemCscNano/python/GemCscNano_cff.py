@@ -1,7 +1,8 @@
 # NanoAOD-format ntuple of CSC LCTs, reco muons, trigger information and simulation truth, one entry per event. Every
 # event and every LCT is stored, and the reco muons passing cscLCTRecoMuonTable.muonCut (default pT > 10 GeV and the
 # medium or tight cut-based ID); tag-and-probe selections are applied when the ntuple is analysed.
-#   LCT, Muon, LCTMuonMatch             cscLCTRecoMuonTable (CSCLCTRecoMuonTableProducer)
+#   LCT, Muon, LCTMuonMatch,            cscLCTRecoMuonTable (CSCLCTRecoMuonTableProducer)
+#   MuonCSCChamber
 #   TrigObj (muon objects only), L1Mu   the central NanoAOD tables; TrigObj needs the PAT trigger chain of miniAOD, run
 #                                       here on hltTriggerSummaryAOD
 #   HLT_* and L1_* bits                 TriggerResults of the HLT process and l1bits, written by NanoAODOutputModule
