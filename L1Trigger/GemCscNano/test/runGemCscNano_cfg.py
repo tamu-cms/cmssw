@@ -1,17 +1,14 @@
 # NanoAOD-format ntuple of CSC LCTs, reco muons, trigger information and (MC) simulation truth (GemCscNano_cff), from
-# inputs that carry both RAW and reco: the ZMu skim (/Muon0/Run2026D-ZMu-PromptReco-v1/RAW-RECO), AOD with its RAW
-# parent given as secondary files, or MC GEN-SIM-RECO with its GEN-SIM-DIGI-RAW parent as secondary files.
+# Run-3 inputs that carry both RAW and reco: the ZMu skim (/Muon0/Run2026D-ZMu-PromptReco-v1/RAW-RECO), AOD with its RAW
+# parent given as secondary files, or MC GEN-SIM-RECO with its GEN-SIM-(DIGI-)RAW parent as secondary files.
 #
-#   cmsRun runGemCscNano_cfg.py inputFiles=<file> globalTag=<GT of the input> [era=Run3_2026] [geometry=<name>] \
-#       [mc=True] [lcts=<module[:instance]>] [maxEvents=100] [secondaryInputFiles=<RAW parent>] [outputFile=...] \
-#       [hltProcess=HLT] [muonCut=<reco::Muon cut; empty = all muons>]
+#   cmsRun runGemCscNano_cfg.py inputFiles=<file> globalTag=<GT of the input> [era=Run3_2026] [mc=True] \
+#       [maxEvents=-1] [secondaryInputFiles=<RAW parent>] [outputFile=...] [muonCut=<reco::Muon cut; empty = all>]
 #
-# Every event of the input is written (tag and probe is done on the ntuple). LCTs: data default = unpacked from
-# rawDataCollector here (no data tier stores them); MC default = the emulator LCTs simCscTriggerPrimitiveDigis of the
-# DIGI step (TMB level); a GEN-SIM-RAW without them (e.g. central Run3Winter25 DY) needs
-# lcts=muonCSCDigis:MuonCSCCorrelatedLCTDigi (unpacked from its RAW). geometry: empty = from the global tag (Run 3); for Phase 2 the name of a
-# Configuration/Geometry Geometry<name>Reco_cff, e.g. ExtendedRun4D121. Every LCT digi of the collection is stored
-# (emulator LCTs span the readout window around BX 8, data LCTs carry a 1-bit BX).
+# Events written: a stored muon (muonCut) with pT > 10 GeV in 0.9 < |eta| < 2.4, or in MC a final-state generator muon
+# with pT > 10 GeV in that range (gemCscNanoMuonFilter, gemCscNanoGenFilter of the cff). LCTs: unpacked from
+# rawDataCollector here (no data tier stores them; MC RAW is packed from the emulator's MPC-sorted LCTs), every digi.
+# Only Run-3 eras are accepted.
 #
 # Emulator LCTs from data: append to a copy of L1Trigger/CSCTriggerPrimitives/test/runCSCTriggerPrimitiveProducer_cfg.py
 # (it sets process.schedule, hard-codes the data GT 140X_dataRun3_v3 and has no NanoAOD output):
@@ -38,26 +35,19 @@ options = VarParsing("analysis")
 options.register("globalTag", "", VarParsing.multiplicity.singleton, VarParsing.varType.string,
                  "global tag of the input (required)")
 options.register("era", "Run3_2026", VarParsing.multiplicity.singleton, VarParsing.varType.string,
-                 "era module name in Configuration.Eras, e.g. Run3_2026 or Phase2C17I13M9")
-options.register("geometry", "", VarParsing.multiplicity.singleton, VarParsing.varType.string,
-                 "empty: geometry from the global tag; else Configuration.Geometry.Geometry<geometry>Reco_cff")
+                 "Run-3 era module name in Configuration.Eras, e.g. Run3_2026")
 options.register("mc", False, VarParsing.multiplicity.singleton, VarParsing.varType.bool,
-                 "simulation: add GenPart, SimTrack and SimTrackCSCLayer")
+                 "simulation: add GenPart, SimTrack and SimTrackCSCLayer, and the generator-muon event selection")
 options.register("muonCut", _defaults.muonCut.value(), VarParsing.multiplicity.singleton, VarParsing.varType.string,
                  "reco::Muon selection: only these muons are stored (Muon and the per-muon tables)")
-options.register("lcts", "", VarParsing.multiplicity.singleton, VarParsing.varType.string,
-                 "LCT collection; empty: data muonCSCDigis:MuonCSCCorrelatedLCTDigi (unpacked here), "
-                 "MC simCscTriggerPrimitiveDigis")
-options.register("hltProcess", "HLT", VarParsing.multiplicity.singleton, VarParsing.varType.string,
-                 "process name of the HLT products (TriggerResults, hltTriggerSummaryAOD)")
 options.setType("outputFile", VarParsing.varType.string)  # no automatic _numEvent<N> suffix
 options.setDefault("outputFile", "GemCscNano.root")
-options.setDefault("maxEvents", 100)
 options.parseArguments()
 
 if not options.globalTag:
     raise RuntimeError("globalTag= is required: use the global tag of the input")
-lcts = options.lcts or ("simCscTriggerPrimitiveDigis" if options.mc else "muonCSCDigis:MuonCSCCorrelatedLCTDigi")
+if not options.era.startswith("Run3"):
+    raise RuntimeError("era=%s: GemCscNano is defined for Run-3 inputs only" % options.era)
 
 era = getattr(importlib.import_module("Configuration.Eras.Era_%s_cff" % options.era), options.era)
 process = cms.Process("GEMCSCNANO", era)
@@ -65,10 +55,7 @@ process = cms.Process("GEMCSCNANO", era)
 process.load("FWCore.MessageService.MessageLogger_cfi")
 process.MessageLogger.cerr.FwkReport.reportEvery = 1000
 process.options.wantSummary = True
-if options.geometry:
-    process.load("Configuration.Geometry.Geometry%sReco_cff" % options.geometry)
-else:
-    process.load("Configuration.StandardSequences.GeometryRecoDB_cff")
+process.load("Configuration.StandardSequences.GeometryRecoDB_cff")
 process.load("Configuration.StandardSequences.FrontierConditions_GlobalTag_cff")
 from Configuration.AlCa.GlobalTag import GlobalTag
 process.GlobalTag = GlobalTag(process.GlobalTag, options.globalTag, "")
@@ -79,28 +66,29 @@ process.source = cms.Source("PoolSource",
 process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(options.maxEvents))
 
 process.load("L1Trigger.GemCscNano.GemCscNano_cff")
-process.cscLCTRecoMuonTable.lcts = lcts
+process.load("EventFilter.CSCRawToDigi.cscUnpacker_cfi")
 process.cscLCTRecoMuonTable.muonCut = options.muonCut
-process.patTrigger.processName = options.hltProcess
-for _module in (process.slimmedPatTrigger, process.unpackedPatTrigger):
-    _module.triggerResults = cms.InputTag("TriggerResults", "", options.hltProcess)
+process.gemCscNanoMuonFilter.cut = "%spt > 10 && %s" % (
+    "(%s) && " % options.muonCut if options.muonCut else "", process.gemCscNanoSelection.cscAcceptance.value())
 
-tasks = [process.gemCscNanoTask]
-if lcts.split(":")[0] == "muonCSCDigis":
-    process.load("EventFilter.CSCRawToDigi.cscUnpacker_cfi")
-    tasks.append(cms.Task(process.muonCSCDigis))
+tasks = [process.gemCscNanoTask, cms.Task(process.muonCSCDigis)]
+selectEvents = ["gemCscNanoMuonPath"]
+process.gemCscNanoMuonPath = cms.Path(process.gemCscNanoMuonFilter)
 if options.mc:
     process.load("SimGeneral.HepPDTESSource.pythiapdt_cfi")  # GenParticlePruner
     tasks.append(process.gemCscNanoMCTask)
+    process.gemCscNanoGenPath = cms.Path(process.gemCscNanoGenFilter)
+    selectEvents.append("gemCscNanoGenPath")
 
 process.out = cms.OutputModule("NanoAODOutputModule",
     fileName=cms.untracked.string(options.outputFile),
     compressionAlgorithm=cms.untracked.string("LZMA"),
     compressionLevel=cms.untracked.int32(9),
+    SelectEvents=cms.untracked.PSet(SelectEvents=cms.vstring(*selectEvents)),
     outputCommands=cms.untracked.vstring(
         "drop *",
         "keep nanoaodFlatTable_*Table_*_*",
-        "keep edmTriggerResults_TriggerResults__%s" % options.hltProcess,  # HLT_* bits
+        "keep edmTriggerResults_TriggerResults__HLT",  # HLT_* bits
         "keep edmTriggerResults_l1bits__%s" % process.name_(),  # L1_* bits (not those an input RECO process kept)
     ))
 process.e = cms.EndPath(process.out, cms.Task(*tasks))

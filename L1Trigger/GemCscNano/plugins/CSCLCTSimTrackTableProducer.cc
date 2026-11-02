@@ -1,6 +1,6 @@
 // NanoAOD tables of the SimTracks that reach the CSCs (MC):
 //   SimTrack          the muon SimTracks and every SimTrack with a CSC simhit, in SimTrack collection order; genPartIdx is
-//                     the row in the GenPart table (genParticles pruned by genPartAssociation), parentIdx the row of the
+//                     the row in the GenPart table (genParticles pruned by the genPartAssociations chain), parentIdx the row of the
 //                     parent SimTrack;
 //   SimTrackCSCLayer  per SimTrack, CSC chamber (with ring) and layer: its simhit and the straight line through its
 //                     simhits in the chamber, in strip and wire-group coordinates. Only the simhits whose particle type
@@ -115,7 +115,7 @@ private:
   const edm::EDGetTokenT<edm::PSimHitContainer> simHitToken_;
   const edm::EDGetTokenT<reco::GenParticleCollection> genParticleToken_;
   const edm::EDGetTokenT<std::vector<int>> genBarcodeToken_;
-  const edm::EDGetTokenT<edm::Association<reco::GenParticleCollection>> genAssociationToken_;
+  std::vector<edm::EDGetTokenT<edm::Association<reco::GenParticleCollection>>> genAssociationTokens_;
   const edm::ESGetToken<CSCGeometry, MuonGeometryRecord> cscGeomToken_;
 };
 
@@ -125,8 +125,11 @@ CSCLCTSimTrackTableProducer::CSCLCTSimTrackTableProducer(const edm::ParameterSet
       simHitToken_(consumes(ps.getParameter<edm::InputTag>("cscSimHits"))),
       genParticleToken_(consumes(ps.getParameter<edm::InputTag>("genParticles"))),
       genBarcodeToken_(consumes(ps.getParameter<edm::InputTag>("genParticles"))),
-      genAssociationToken_(consumes(ps.getParameter<edm::InputTag>("genPartAssociation"))),
       cscGeomToken_(esConsumes()) {
+  for (const auto& tag : ps.getParameter<std::vector<edm::InputTag>>("genPartAssociations"))
+    genAssociationTokens_.push_back(consumes<edm::Association<reco::GenParticleCollection>>(tag));
+  if (genAssociationTokens_.empty())
+    throw cms::Exception("Configuration") << "genPartAssociations is empty";
   produces<nanoaod::FlatTable>("simTrack");
   produces<nanoaod::FlatTable>("simTrackCSCLayer");
 }
@@ -138,8 +141,13 @@ void CSCLCTSimTrackTableProducer::fillDescriptions(edm::ConfigurationDescription
   desc.add<edm::InputTag>("cscSimHits", edm::InputTag("g4SimHits", "MuonCSCHits"));
   desc.add<edm::InputTag>("genParticles", edm::InputTag("genParticles"))
       ->setComment("reco::GenParticle collection and its HepMC barcode vector (same label)");
-  desc.add<edm::InputTag>("genPartAssociation", edm::InputTag("cscLCTGenParticles"))
-      ->setComment("GenParticlePruner association genParticles -> the collection written as GenPart");
+  desc.add<std::vector<edm::InputTag>>("genPartAssociations",
+                                       {edm::InputTag("prunedGenParticlesWithStatusOne"),
+                                        edm::InputTag("prunedGenParticles"),
+                                        edm::InputTag("finalGenParticles")})
+      ->setComment(
+          "GenParticlePruner associations from genParticles to the collection written as GenPart, applied in order "
+          "(default: the central miniAOD and NanoAOD chain)");
   descriptions.add("cscLCTSimTrackTableProducer", desc);
 }
 
@@ -149,7 +157,10 @@ void CSCLCTSimTrackTableProducer::produce(edm::Event& event, const edm::EventSet
   const auto& simHits = event.get(simHitToken_);
   const auto genParticles = event.getHandle(genParticleToken_);
   const auto& barcodes = event.get(genBarcodeToken_);
-  const auto& genAssociation = event.get(genAssociationToken_);
+  std::vector<const edm::Association<reco::GenParticleCollection>*> genAssociations;
+  genAssociations.reserve(genAssociationTokens_.size());
+  for (const auto& token : genAssociationTokens_)
+    genAssociations.push_back(&event.get(token));
   const CSCGeometry& geometry = setup.getData(cscGeomToken_);
   if (barcodes.size() != genParticles->size())
     throw cms::Exception("ProductNotValid")
@@ -179,9 +190,12 @@ void CSCLCTSimTrackTableProducer::produce(edm::Event& event, const edm::EventSet
     if (g == genIndexOfBarcode.end())
       throw cms::Exception("ProductNotValid")
           << "SimTrack " << t.trackId() << ": barcode " << t.genpartIndex() << " not in genParticles";
-    const reco::GenParticleRef kept = genAssociation[reco::GenParticleRef(genParticles, g->second)];
-    if (kept.isNull())
-      return -1;
+    reco::GenParticleRef kept(genParticles, g->second);
+    for (const auto* association : genAssociations) {
+      kept = (*association)[kept];
+      if (kept.isNull())
+        return -1;
+    }
     checkIndexRange(kept.key() + 1, "GenPart rows");
     return kept.key();
   };

@@ -138,6 +138,7 @@ private:
   const edm::EDGetTokenT<reco::VertexCollection> vertexToken_;
   const edm::ESGetToken<CSCGeometry, MuonGeometryRecord> cscGeomToken_;
   const edm::ESGetToken<GEMGeometry, MuonGeometryRecord> gemGeomToken_;
+  const std::string lctsLabel_;
   const std::string muonCutString_;
   const StringCutObjectSelector<reco::Muon> muonCut_;
 };
@@ -148,6 +149,7 @@ CSCLCTRecoMuonTableProducer::CSCLCTRecoMuonTableProducer(const edm::ParameterSet
       vertexToken_(consumes(ps.getParameter<edm::InputTag>("vertices"))),
       cscGeomToken_(esConsumes()),
       gemGeomToken_(esConsumes()),
+      lctsLabel_(ps.getParameter<edm::InputTag>("lcts").encode()),
       muonCutString_(ps.getParameter<std::string>("muonCut")),
       muonCut_(muonCutString_) {
   produces<nanoaod::FlatTable>("lct");
@@ -197,7 +199,7 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
 
   using LCTMatch = LCTRow;
   auto lctTable = std::make_unique<nanoaod::FlatTable>(lcts.size(), "LCT", false);
-  lctTable->setDoc("CSC LCTs: every digi of the LCT collection, in collection order (detector unit, then digi)");
+  lctTable->setDoc("CSC LCTs: every digi of " + lctsLabel_ + ", in collection order (detector unit, then digi)");
   addColumn<int16_t>(*lctTable, "endcap", lcts, [](const LCTMatch& m) { return m.chamber.zendcap(); }, "+1 or -1");
   addColumn<bool>(
       *lctTable, "valid", lcts, [](const LCTMatch& m) { return m.lct->isValid(); }, "CSCCorrelatedLCTDigi::isValid");
