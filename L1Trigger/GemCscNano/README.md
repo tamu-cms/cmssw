@@ -1,6 +1,6 @@
 # L1Trigger/GemCscNano
 
-A NanoAOD-format ntuple of CSC LCTs, reco muons, the muons' CSC and GEM information, trigger information and
+A NanoAOD-format ntuple of CSC LCTs, ALCTs and CLCTs, reco muons, the muons' CSC and GEM information, trigger information and
 simulation truth, for the R&D of the LCT and GEM-CSC trigger algorithms. No LCT matching and no tag-and-probe
 selection is applied.
 
@@ -22,6 +22,8 @@ refuses other eras and requires `era=`). Row indices are 0-based, −1 = none.
 | Collection | Content | Producer |
 |---|---|---|
 | `LCT` | every digi of the LCT collection, in collection order: chamber, `valid` (`isValid()`), hs, es, wg, quality, patterns, slope (`slope6` = `getSlopeEx(6)`), bend, bx, type, gemLayer | `CSCLCTRecoMuonTableProducer` |
+| `ALCT` | every digi of the ALCT collection (`muonCSCDigis:MuonCSCALCTDigi`: in data the ALCT board's readout, two ALCT words per readout time bin, `bx` = the bin; invalid words dropped by the unpacker), in collection order: chamber, `valid`, quality, accelerator, collisionB, wg (`getKeyWG`), bx, trknmb, fullBX, `run3` (digi version), hmt (−1 for a Legacy digi) | `CSCLCTRecoMuonTableProducer` |
+| `CLCT` | every digi of the CLCT collection (`muonCSCDigis:MuonCSCCLCTDigi`: in data the two CLCTs of the (O)TMB header; invalid words dropped), in collection order: chamber, `valid`, quality, pattern, run3Pattern, slope, bend, stripType, cfeb, strip, hs (`getKeyStrip()` = 32 cfeb + strip), quartStripBit, eighthStripBit (eighth-strip = 4 hs + 2q + e for compCode ≥ 0; `getKeyStrip(8)` returns hs for a Legacy digi), bx, trknmb, fullBX, compCode (−1 = Legacy), `run3` | `CSCLCTRecoMuonTableProducer` |
 | `Muon` | the reco muons passing `muonCut` (default `pt > 10 && (passed("CutBasedIdMedium") || passed("CutBasedIdTight"))`), in collection order (the doc string names the cut used): central NanoAOD names where the quantity is the same (pt, eta, phi, charge, isGlobal, isTracker, isStandalone, isPFcand, looseId, mediumId, tightId, pfRelIso04_all, dxy, dz, nStations), standalone-track kinematics (0 if none: `standalonePt == 0`) | `CSCLCTRecoMuonTableProducer` |
 | `MuonCSCChamber` | one row per CSC chamber match (`reco::Muon::matches()`) of each stored muon, in muon order: `muonIdx`, chamber (ME1/1: normally a ring-1 = ME1b and a ring-4 = ME1a row for each crossing, with nearly the same propagated state and edges; `MuonCSCLayer_propInStripPlane` tells which ring's strip plane the track crosses); the track propagated by reco (inner track if any, else standalone; `TrackDetectorAssociator`) on the chamber surface: `x`, `y`, `dXdZ`, `dYdZ` and their errors, `edgeX`, `edgeY` (< 0: inside), `nDigisInRange`, `eta`, `phi` of that point; `nSegmentMatches` | `CSCLCTRecoMuonTableProducer` |
 | `MuonCSCSegment` | one row per CSC segment of a stored muon: source 0 = a valid 4D CSC hit of its standalone track (`outerTrack()->recHits()` order), source 1 = a segment match of one of its CSC chamber matches (`matches()`, `segmentMatches` order) with reco's arbitration `mask`, link `muonCSCChamberIdx`; chamber ids (ring), nHits, chi2, ndof, time, position and direction (chamber frame) with errors | `CSCLCTRecoMuonTableProducer` |

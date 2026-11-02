@@ -1,9 +1,10 @@
-# NanoAOD-format ntuple of CSC LCTs, reco muons, trigger information and simulation truth, one entry per event (Run 3).
-# Events: those with a stored muon (cscLCTRecoMuonTable.muonCut) with pT > 10 GeV and 0.9 < |eta| < 2.4, or (MC) a
+# NanoAOD-format ntuple of CSC LCTs, ALCTs and CLCTs, reco muons, trigger information and simulation truth, one entry
+# per event (Run 3). Events: those with a stored muon (cscLCTRecoMuonTable.muonCut) with pT > 10 GeV and 0.9 < |eta| < 2.4, or (MC) a
 # final-state generator muon with pT > 10 GeV and 0.9 < |eta| < 2.4 (gemCscNanoMuonFilter, gemCscNanoGenFilter; the
-# user's definition of 2026-11-02). Per event: every LCT; the reco muons passing muonCut (default pT > 10 GeV and the
+# user's definition of 2026-11-02). Per event: every LCT, ALCT and CLCT; the reco muons passing muonCut (default pT > 10 GeV and the
 # medium or tight cut-based ID). No LCT matching and no tag-and-probe selection is applied.
-#   LCT, Muon, MuonCSCChamber,          cscLCTRecoMuonTable (CSCLCTRecoMuonTableProducer)
+#   LCT, ALCT, CLCT, Muon,              cscLCTRecoMuonTable (CSCLCTRecoMuonTableProducer)
+#   MuonCSCChamber,
 #   MuonCSCSegment, MuonCSCLayer,
 #   MuonCSCRecHitADC, MuonGEMChamber,
 #   MuonGEMHitMatch

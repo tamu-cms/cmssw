@@ -1,5 +1,6 @@
-// NanoAOD tables of CSC LCTs, reco muons and the muons' CSC and GEM information (one entry per event):
+// NanoAOD tables of CSC LCTs, ALCTs, CLCTs, reco muons and the muons' CSC and GEM information (one entry per event):
 //   LCT              every digi of the LCT collection, in collection order;
+//   ALCT, CLCT       every digi of the ALCT and of the CLCT collection, in collection order;
 //   Muon             the reco muons passing muonCut (default pT > 10 GeV and the medium or tight cut-based ID), in
 //                    collection order;
 //   MuonCSCChamber   one row per CSC chamber match (reco::MuonChamberMatch) of each stored muon: reco's propagated
@@ -13,6 +14,8 @@
 // No event selection is applied here.
 
 #include "CommonTools/Utils/interface/StringCutObjectSelector.h"
+#include "DataFormats/CSCDigi/interface/CSCALCTDigiCollection.h"
+#include "DataFormats/CSCDigi/interface/CSCCLCTDigiCollection.h"
 #include "DataFormats/CSCDigi/interface/CSCConstants.h"
 #include "DataFormats/CSCDigi/interface/CSCCorrelatedLCTDigiCollection.h"
 #include "DataFormats/CSCRecHit/interface/CSCRecHit2D.h"
@@ -64,6 +67,32 @@ namespace {
     for (const Row& r : rows)
       v.push_back(value(r));
     table.addColumn<T>(name, v, doc);
+  }
+
+  // One digi of a CSC digi collection with its detector unit, in collection order.
+  template <typename D>
+  struct DigiRow {
+    CSCDetId chamber;
+    const D* digi;
+  };
+
+  template <typename D, typename C>
+  std::vector<DigiRow<D>> digiRows(const C& collection) {
+    std::vector<DigiRow<D>> rows;
+    for (auto detUnit = collection.begin(); detUnit != collection.end(); ++detUnit)
+      for (auto d = (*detUnit).second.first; d != (*detUnit).second.second; ++d)
+        rows.push_back({(*detUnit).first, &*d});
+    return rows;
+  }
+
+  // The chamber columns of a digi table (the detector unit as the collection stores it).
+  template <typename D>
+  void addChamberColumns(nanoaod::FlatTable& table, const std::vector<DigiRow<D>>& rows) {
+    addColumn<int16_t>(table, "endcap", rows, [](const DigiRow<D>& r) { return r.chamber.zendcap(); }, "+1 or -1");
+    addColumn<int16_t>(table, "station", rows, [](const DigiRow<D>& r) { return r.chamber.station(); }, "station");
+    addColumn<int16_t>(
+        table, "ring", rows, [](const DigiRow<D>& r) { return r.chamber.ring(); }, "ring of the detector unit");
+    addColumn<int16_t>(table, "chamber", rows, [](const DigiRow<D>& r) { return r.chamber.chamber(); }, "chamber");
   }
 
   void checkIndexRange(size_t n, const char* what) {
@@ -134,25 +163,35 @@ private:
   void produce(edm::Event&, const edm::EventSetup&) override;
 
   const edm::EDGetTokenT<CSCCorrelatedLCTDigiCollection> lctToken_;
+  const edm::EDGetTokenT<CSCALCTDigiCollection> alctToken_;
+  const edm::EDGetTokenT<CSCCLCTDigiCollection> clctToken_;
   const edm::EDGetTokenT<reco::MuonCollection> muonToken_;
   const edm::EDGetTokenT<reco::VertexCollection> vertexToken_;
   const edm::ESGetToken<CSCGeometry, MuonGeometryRecord> cscGeomToken_;
   const edm::ESGetToken<GEMGeometry, MuonGeometryRecord> gemGeomToken_;
   const std::string lctsLabel_;
+  const std::string alctsLabel_;
+  const std::string clctsLabel_;
   const std::string muonCutString_;
   const StringCutObjectSelector<reco::Muon> muonCut_;
 };
 
 CSCLCTRecoMuonTableProducer::CSCLCTRecoMuonTableProducer(const edm::ParameterSet& ps)
     : lctToken_(consumes(ps.getParameter<edm::InputTag>("lcts"))),
+      alctToken_(consumes(ps.getParameter<edm::InputTag>("alcts"))),
+      clctToken_(consumes(ps.getParameter<edm::InputTag>("clcts"))),
       muonToken_(consumes(ps.getParameter<edm::InputTag>("muons"))),
       vertexToken_(consumes(ps.getParameter<edm::InputTag>("vertices"))),
       cscGeomToken_(esConsumes()),
       gemGeomToken_(esConsumes()),
       lctsLabel_(ps.getParameter<edm::InputTag>("lcts").encode()),
+      alctsLabel_(ps.getParameter<edm::InputTag>("alcts").encode()),
+      clctsLabel_(ps.getParameter<edm::InputTag>("clcts").encode()),
       muonCutString_(ps.getParameter<std::string>("muonCut")),
       muonCut_(muonCutString_) {
   produces<nanoaod::FlatTable>("lct");
+  produces<nanoaod::FlatTable>("alct");
+  produces<nanoaod::FlatTable>("clct");
   produces<nanoaod::FlatTable>("muon");
   produces<nanoaod::FlatTable>("muonCSCChamber");
   produces<nanoaod::FlatTable>("muonGEMChamber");
@@ -166,6 +205,10 @@ void CSCLCTRecoMuonTableProducer::fillDescriptions(edm::ConfigurationDescription
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("lcts", edm::InputTag("muonCSCDigis", "MuonCSCCorrelatedLCTDigi"))
       ->setComment("LCT collection: every digi is stored");
+  desc.add<edm::InputTag>("alcts", edm::InputTag("muonCSCDigis", "MuonCSCALCTDigi"))
+      ->setComment("ALCT collection: every digi is stored");
+  desc.add<edm::InputTag>("clcts", edm::InputTag("muonCSCDigis", "MuonCSCCLCTDigi"))
+      ->setComment("CLCT collection: every digi is stored");
   desc.add<edm::InputTag>("muons", edm::InputTag("muons"));
   desc.add<std::string>("muonCut", "pt > 10 && (passed(\"CutBasedIdMedium\") || passed(\"CutBasedIdTight\"))")
       ->setComment("reco::Muon selection: only these muons are stored");
@@ -248,6 +291,99 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       lcts,
       [](const LCTRow& m) { return m.lct->getGemLayerUsedForSlopeComputation(); },
       "GEM layer used for the slope: emulator 1, 2, 0 = none; Run3-b unpacked data the raw 1-bit field");
+
+  // ALCT and CLCT: every digi, in collection order; the accessors as stored, plus the key half-strip of a CLCT
+  const auto alcts = digiRows<CSCALCTDigi>(event.get(alctToken_));
+  auto alctTable = std::make_unique<nanoaod::FlatTable>(alcts.size(), "ALCT", false);
+  alctTable->setDoc("CSC ALCTs: every digi of " + alctsLabel_ + ", in collection order (detector unit, then digi)");
+  using ALCTRow = DigiRow<CSCALCTDigi>;
+  addChamberColumns(*alctTable, alcts);
+  addColumn<bool>(
+      *alctTable, "valid", alcts, [](const ALCTRow& r) { return r.digi->isValid(); }, "CSCALCTDigi::isValid");
+  addColumn<int16_t>(*alctTable, "quality", alcts, [](const ALCTRow& r) { return r.digi->getQuality(); }, "quality");
+  addColumn<int16_t>(
+      *alctTable, "accelerator", alcts, [](const ALCTRow& r) { return r.digi->getAccelerator(); }, "accelerator bit");
+  addColumn<int16_t>(
+      *alctTable,
+      "collisionB",
+      alcts,
+      [](const ALCTRow& r) { return r.digi->getCollisionB(); },
+      "collision pattern type, getCollisionB");
+  addColumn<int16_t>(
+      *alctTable, "wg", alcts, [](const ALCTRow& r) { return r.digi->getKeyWG(); }, "key wire group, 0-based");
+  addColumn<int16_t>(*alctTable, "bx", alcts, [](const ALCTRow& r) { return r.digi->getBX(); }, "BX, getBX");
+  addColumn<int16_t>(
+      *alctTable, "trknmb", alcts, [](const ALCTRow& r) { return r.digi->getTrknmb(); }, "track number (1 or 2)");
+  addColumn<int16_t>(*alctTable, "fullBX", alcts, [](const ALCTRow& r) { return r.digi->getFullBX(); }, "getFullBX");
+  addColumn<bool>(
+      *alctTable, "run3", alcts, [](const ALCTRow& r) { return r.digi->isRun3(); }, "Run-3 version of the digi");
+  addColumn<int16_t>(
+      *alctTable,
+      "hmt",
+      alcts,
+      [](const ALCTRow& r) { return r.digi->isRun3() ? int16_t(r.digi->getHMT()) : int16_t(-1); },
+      "high-multiplicity trigger bits, getHMT; -1 for a Legacy digi");
+
+  const auto clcts = digiRows<CSCCLCTDigi>(event.get(clctToken_));
+  auto clctTable = std::make_unique<nanoaod::FlatTable>(clcts.size(), "CLCT", false);
+  clctTable->setDoc("CSC CLCTs: every digi of " + clctsLabel_ + ", in collection order (detector unit, then digi)");
+  using CLCTRow = DigiRow<CSCCLCTDigi>;
+  addChamberColumns(*clctTable, clcts);
+  addColumn<bool>(
+      *clctTable, "valid", clcts, [](const CLCTRow& r) { return r.digi->isValid(); }, "CSCCLCTDigi::isValid");
+  addColumn<int16_t>(*clctTable, "quality", clcts, [](const CLCTRow& r) { return r.digi->getQuality(); }, "quality");
+  addColumn<int16_t>(
+      *clctTable, "pattern", clcts, [](const CLCTRow& r) { return r.digi->getPattern(); }, "Run-2 pattern, getPattern");
+  addColumn<int16_t>(
+      *clctTable,
+      "run3Pattern",
+      clcts,
+      [](const CLCTRow& r) { return r.digi->getRun3Pattern(); },
+      "Run-3 pattern, getRun3Pattern");
+  addColumn<int16_t>(
+      *clctTable, "slope", clcts, [](const CLCTRow& r) { return r.digi->getSlope(); }, "Run-3 slope, getSlope");
+  addColumn<int16_t>(*clctTable, "bend", clcts, [](const CLCTRow& r) { return r.digi->getBend(); }, "bend (L/R)");
+  addColumn<int16_t>(
+      *clctTable, "stripType", clcts, [](const CLCTRow& r) { return r.digi->getStripType(); }, "getStripType");
+  addColumn<int16_t>(
+      *clctTable, "cfeb", clcts, [](const CLCTRow& r) { return r.digi->getCFEB(); }, "CFEB number, getCFEB");
+  addColumn<int16_t>(
+      *clctTable,
+      "strip",
+      clcts,
+      [](const CLCTRow& r) { return r.digi->getStrip(); },
+      "half-strip in the CFEB, getStrip");
+  addColumn<int16_t>(
+      *clctTable,
+      "hs",
+      clcts,
+      [](const CLCTRow& r) { return r.digi->getKeyStrip(); },
+      "key half-strip, 0-based: getKeyStrip() = 32 cfeb + strip");
+  addColumn<bool>(
+      *clctTable,
+      "quartStripBit",
+      clcts,
+      [](const CLCTRow& r) { return r.digi->getQuartStripBit(); },
+      "1/4-strip bit (Run 3); eighth-strip = 4 hs + 2 quartStripBit + eighthStripBit for compCode >= 0 (getKeyStrip(8) "
+      "returns hs for compCode = -1)");
+  addColumn<bool>(
+      *clctTable,
+      "eighthStripBit",
+      clcts,
+      [](const CLCTRow& r) { return r.digi->getEighthStripBit(); },
+      "1/8-strip bit (Run 3)");
+  addColumn<int16_t>(*clctTable, "bx", clcts, [](const CLCTRow& r) { return r.digi->getBX(); }, "BX, getBX");
+  addColumn<int16_t>(
+      *clctTable, "trknmb", clcts, [](const CLCTRow& r) { return r.digi->getTrknmb(); }, "track number (1 or 2)");
+  addColumn<int16_t>(*clctTable, "fullBX", clcts, [](const CLCTRow& r) { return r.digi->getFullBX(); }, "getFullBX");
+  addColumn<int16_t>(
+      *clctTable,
+      "compCode",
+      clcts,
+      [](const CLCTRow& r) { return r.digi->getCompCode(); },
+      "comparator code, getCompCode; -1 for a Legacy digi");
+  addColumn<bool>(
+      *clctTable, "run3", clcts, [](const CLCTRow& r) { return r.digi->isRun3(); }, "Run-3 version of the digi");
 
   // Muon rows are the selected muons, so a row index is the muon's index in the selected (muonCut) collection.
   std::vector<size_t> muonRows(muons.size());
@@ -1087,6 +1223,8 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       *gemHitTable, "bx", gemHits, [](const GEMHitRow& h) { return h.hit->bx; }, "rechit BX (GEMRecHit::BunchX)");
 
   event.put(std::move(lctTable), "lct");
+  event.put(std::move(alctTable), "alct");
+  event.put(std::move(clctTable), "clct");
   event.put(std::move(muonTable), "muon");
   event.put(std::move(chamberTable), "muonCSCChamber");
   event.put(std::move(gemTable), "muonGEMChamber");
