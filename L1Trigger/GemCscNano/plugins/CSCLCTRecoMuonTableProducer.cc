@@ -1,16 +1,16 @@
-// NanoAOD tables of CSC LCTs, reco muons and their CSCLCTRecoMuonMatcher associations (one entry per event):
-//   LCT           every LCT the matcher considers (valid, inside lctBXWindow), in collection order;
-//   Muon          the reco muons passing muonCut (default pT > 10 GeV and the medium or tight cut-based ID), in
-//                 collection order; only these muons are matched;
-//   LCTMuonMatch  one row per matched LCT-muon pair (rows of the LCT and Muon tables, segment, key-layer residuals),
-//                 grouped by LCT, closest muon first;
-//   MuonCSCChamber one row per CSC chamber match (reco::MuonChamberMatch) of each stored muon: the track propagated
-//                 by reco to the chamber, that position carried to the key layer in LCT units, and which segments
-//                 the muon has in the chamber;
-//   MuonGEMChamber one row per GEM chamber match of each stored muon: the propagated track on the chamber surface,
-//                 the eta partition, strip and pad where its line crosses the partition plane; MuonGEMHitMatch: the
-//                 GEM rechits reco matched there.
-// No event selection is applied: tag and probe is left to the analysis of the ntuple.
+// NanoAOD tables of CSC LCTs, reco muons and the muons' CSC and GEM information (one entry per event):
+//   LCT              every digi of the LCT collection, in collection order;
+//   Muon             the reco muons passing muonCut (default pT > 10 GeV and the medium or tight cut-based ID), in
+//                    collection order;
+//   MuonCSCChamber   one row per CSC chamber match (reco::MuonChamberMatch) of each stored muon: reco's propagated
+//                    track state on the chamber surface;
+//   MuonCSCSegment   the muons' CSC segments, from the standalone track and from the chamber matches;
+//   MuonCSCLayer     per muon, chamber, segment and layer: the segment's rechit, the segment line and the propagated
+//                    state on the layer, in strip and wire-group coordinates; MuonCSCRecHitADC: the rechits' ADCs;
+//   MuonGEMChamber   one row per GEM chamber match of each stored muon: the propagated track on the chamber surface,
+//                    the eta partition, strip and pad where its line crosses the partition plane; MuonGEMHitMatch:
+//                    the GEM rechits reco matched there.
+// No event selection is applied here.
 
 #include "CommonTools/Utils/interface/StringCutObjectSelector.h"
 #include "DataFormats/CSCDigi/interface/CSCConstants.h"
@@ -40,14 +40,13 @@
 #include "Geometry/CSCGeometry/interface/CSCLayer.h"
 #include "Geometry/GEMGeometry/interface/GEMGeometry.h"
 #include "Geometry/Records/interface/MuonGeometryRecord.h"
-#include "L1Trigger/GemCscNano/interface/CSCLCTRecoMuonMatcher.h"
+#include "L1Trigger/GemCscNano/interface/CSCLayerPoint.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <limits>
 #include <memory>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -72,17 +71,12 @@ namespace {
       throw cms::Exception("LogicError") << n << " " << what << " in one event: the int16 index columns would overflow";
   }
 
-  // One CSC chamber match of a stored muon, with the propagated position carried to the key layer.
+  // One CSC chamber match of a stored muon.
   struct ChamberRow {
     int16_t muonIdx;
     const reco::MuonChamberMatch* match;
-    CSCDetId id;                        // the chamber of the match (ME1/1: ring 1 = ME1b or ring 4 = ME1a)
-    csclct::KeyLayerPosition key;       // propagated position on layer 3, LCT units, with the geometry of this ring
-    bool inStripPlane = false;          // that point lies inside the y range of this ring's layer-3 strip plane
-    float eta = 0.f, phi = 0.f;         // of that point (0 if none)
-    bool hasMatcherSegment = false;     // the matcher's segmentSource gives a segment in this chamber
-    bool hasStandaloneSegment = false;  // the standalone track has a CSC segment in this chamber
-    bool hasArbitratedSegment = false;  // the arbitrated chamber matches have a segment here (segmentSource matches)
+    CSCDetId id;                 // the chamber of the match (ME1/1: ring 1 = ME1b or ring 4 = ME1a)
+    float eta = 0.f, phi = 0.f;  // of the state on the chamber surface
   };
 
   // One CSC segment of a stored muon: a hit of its standalone track (source 0) or a segment match of one of its
@@ -129,12 +123,6 @@ namespace {
     float dx;
   };
 
-  struct LinkRow {
-    int16_t lctIdx;
-    int16_t muonIdx;
-    const CSCLCTRecoMuonMatcher::MuonMatch* match;
-  };
-
 }  // namespace
 
 class CSCLCTRecoMuonTableProducer : public edm::stream::EDProducer<> {
@@ -150,11 +138,8 @@ private:
   const edm::EDGetTokenT<reco::VertexCollection> vertexToken_;
   const edm::ESGetToken<CSCGeometry, MuonGeometryRecord> cscGeomToken_;
   const edm::ESGetToken<GEMGeometry, MuonGeometryRecord> gemGeomToken_;
+  const std::string muonCutString_;
   const StringCutObjectSelector<reco::Muon> muonCut_;
-  const CSCLCTRecoMuonMatcher matcher_;
-  // the two explicit segment sources, for the MuonCSCChamber flags (their windows are not used)
-  const CSCLCTRecoMuonMatcher standaloneSource_;
-  const CSCLCTRecoMuonMatcher matchesSource_;
 };
 
 CSCLCTRecoMuonTableProducer::CSCLCTRecoMuonTableProducer(const edm::ParameterSet& ps)
@@ -163,19 +148,10 @@ CSCLCTRecoMuonTableProducer::CSCLCTRecoMuonTableProducer(const edm::ParameterSet
       vertexToken_(consumes(ps.getParameter<edm::InputTag>("vertices"))),
       cscGeomToken_(esConsumes()),
       gemGeomToken_(esConsumes()),
-      muonCut_(ps.getParameter<std::string>("muonCut")),
-      matcher_(ps.getParameter<edm::ParameterSet>("matcher")),
-      standaloneSource_(CSCLCTRecoMuonMatcher::Config(CSCLCTRecoMuonMatcher::SegmentSource::Standalone,
-                                                      matcher_.config().maxDeltaHalfStrip,
-                                                      matcher_.config().maxDeltaWireGroup,
-                                                      matcher_.config().lctBXWindow)),
-      matchesSource_(CSCLCTRecoMuonMatcher::Config(CSCLCTRecoMuonMatcher::SegmentSource::Matches,
-                                                   matcher_.config().maxDeltaHalfStrip,
-                                                   matcher_.config().maxDeltaWireGroup,
-                                                   matcher_.config().lctBXWindow)) {
+      muonCutString_(ps.getParameter<std::string>("muonCut")),
+      muonCut_(muonCutString_) {
   produces<nanoaod::FlatTable>("lct");
   produces<nanoaod::FlatTable>("muon");
-  produces<nanoaod::FlatTable>("lctMuonMatch");
   produces<nanoaod::FlatTable>("muonCSCChamber");
   produces<nanoaod::FlatTable>("muonGEMChamber");
   produces<nanoaod::FlatTable>("muonGEMHitMatch");
@@ -187,15 +163,12 @@ CSCLCTRecoMuonTableProducer::CSCLCTRecoMuonTableProducer(const edm::ParameterSet
 void CSCLCTRecoMuonTableProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("lcts", edm::InputTag("muonCSCDigis", "MuonCSCCorrelatedLCTDigi"))
-      ->setComment("LCT collection: unpacked data LCTs, or emulator LCTs (then consider matcher.lctBXWindow)");
+      ->setComment("LCT collection: every digi is stored");
   desc.add<edm::InputTag>("muons", edm::InputTag("muons"));
   desc.add<std::string>("muonCut", "pt > 10 && (passed(\"CutBasedIdMedium\") || passed(\"CutBasedIdTight\"))")
-      ->setComment("reco::Muon selection: only these muons are stored and matched");
+      ->setComment("reco::Muon selection: only these muons are stored");
   desc.add<edm::InputTag>("vertices", edm::InputTag("offlinePrimaryVertices"))
       ->setComment("Muon_dxy and Muon_dz are computed w.r.t. the first vertex, as Muon_tightId in RECO");
-  edm::ParameterSetDescription matcher;
-  CSCLCTRecoMuonMatcher::fillPSetDescription(matcher);
-  desc.add<edm::ParameterSetDescription>("matcher", matcher);
   descriptions.add("cscLCTRecoMuonTableProducer", desc);
 }
 
@@ -208,76 +181,74 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
   if (vertices.empty())
     throw cms::Exception("ProductNotValid") << "empty vertex collection: Muon_dxy and Muon_dz need a primary vertex";
   const reco::Vertex::Point& pv = vertices.front().position();
-  const auto matches = matcher_.match(event.get(lctToken_), muons, setup.getData(cscGeomToken_));
-  checkIndexRange(matches.size(), "LCTs");
+  struct LCTRow {
+    CSCDetId chamber;
+    const CSCCorrelatedLCTDigi* lct;
+  };
+  std::vector<LCTRow> lcts;
+  const auto& lctCollection = event.get(lctToken_);
+  for (auto detUnit = lctCollection.begin(); detUnit != lctCollection.end(); ++detUnit) {
+    const auto& range = (*detUnit).second;
+    for (auto lct = range.first; lct != range.second; ++lct)
+      lcts.push_back({(*detUnit).first, &*lct});
+  }
+  checkIndexRange(lcts.size(), "LCTs");
   checkIndexRange(muons.size(), "muons");
 
-  std::vector<LinkRow> links;
-  std::vector<int16_t> muonNLCTMatch(muons.size(), 0);
-  for (size_t i = 0; i < matches.size(); ++i)
-    for (const auto& mm : matches[i].muons) {
-      links.push_back({int16_t(i), int16_t(mm.muonIndex), &mm});
-      ++muonNLCTMatch[mm.muonIndex];
-    }
-
-  using LCTMatch = CSCLCTRecoMuonMatcher::LCTMatch;
-  auto lctTable = std::make_unique<nanoaod::FlatTable>(matches.size(), "LCT", false);
-  lctTable->setDoc("CSC LCTs (valid, inside the matcher's lctBXWindow), in the order of the LCT collection");
-  addColumn<int16_t>(*lctTable, "endcap", matches, [](const LCTMatch& m) { return m.chamber.zendcap(); }, "+1 or -1");
-  addColumn<int16_t>(*lctTable, "station", matches, [](const LCTMatch& m) { return m.chamber.station(); }, "station");
+  using LCTMatch = LCTRow;
+  auto lctTable = std::make_unique<nanoaod::FlatTable>(lcts.size(), "LCT", false);
+  lctTable->setDoc("CSC LCTs: every digi of the LCT collection, in collection order (detector unit, then digi)");
+  addColumn<int16_t>(*lctTable, "endcap", lcts, [](const LCTMatch& m) { return m.chamber.zendcap(); }, "+1 or -1");
+  addColumn<bool>(
+      *lctTable, "valid", lcts, [](const LCTMatch& m) { return m.lct->isValid(); }, "CSCCorrelatedLCTDigi::isValid");
+  addColumn<int16_t>(*lctTable, "station", lcts, [](const LCTMatch& m) { return m.chamber.station(); }, "station");
   addColumn<int16_t>(
-      *lctTable, "ring", matches, [](const LCTMatch& m) { return m.chamber.ring(); }, "ring (ME1/1 LCTs: 1)");
-  addColumn<int16_t>(*lctTable, "chamber", matches, [](const LCTMatch& m) { return m.chamber.chamber(); }, "chamber");
+      *lctTable, "ring", lcts, [](const LCTMatch& m) { return m.chamber.ring(); }, "ring (ME1/1 LCTs: 1)");
+  addColumn<int16_t>(*lctTable, "chamber", lcts, [](const LCTMatch& m) { return m.chamber.chamber(); }, "chamber");
   addColumn<int16_t>(
       *lctTable,
       "hs",
-      matches,
+      lcts,
       [](const LCTMatch& m) { return m.lct->getStrip(); },
       "key half-strip, 0-based (ME1/1: ME1b 0-127, ME1a 128-223)");
   addColumn<int16_t>(
-      *lctTable, "es", matches, [](const LCTMatch& m) { return m.lct->getStrip(8); }, "key eighth-strip, getStrip(8)");
+      *lctTable, "es", lcts, [](const LCTMatch& m) { return m.lct->getStrip(8); }, "key eighth-strip, getStrip(8)");
   addColumn<int16_t>(
-      *lctTable, "wg", matches, [](const LCTMatch& m) { return m.lct->getKeyWG(); }, "key wire group, 0-based");
-  addColumn<int16_t>(*lctTable, "quality", matches, [](const LCTMatch& m) { return m.lct->getQuality(); }, "quality");
+      *lctTable, "wg", lcts, [](const LCTMatch& m) { return m.lct->getKeyWG(); }, "key wire group, 0-based");
+  addColumn<int16_t>(*lctTable, "quality", lcts, [](const LCTMatch& m) { return m.lct->getQuality(); }, "quality");
   addColumn<int16_t>(
-      *lctTable, "pattern", matches, [](const LCTMatch& m) { return m.lct->getPattern(); }, "Run-2 pattern");
+      *lctTable, "pattern", lcts, [](const LCTMatch& m) { return m.lct->getPattern(); }, "Run-2 pattern");
   addColumn<int16_t>(
       *lctTable,
       "run3Pattern",
-      matches,
+      lcts,
       [](const LCTMatch& m) { return m.lct->getRun3Pattern(); },
       "Run-3 pattern (0 for Run3-b unpacked data)");
   addColumn<int16_t>(
-      *lctTable, "slope", matches, [](const LCTMatch& m) { return m.lct->getSlope(); }, "slope, getSlope() (4 bits)");
+      *lctTable, "slope", lcts, [](const LCTMatch& m) { return m.lct->getSlope(); }, "slope, getSlope() (4 bits)");
   addColumn<int16_t>(
       *lctTable,
       "slope6",
-      matches,
+      lcts,
       [](const LCTMatch& m) { return m.lct->getSlopeEx(6); },
       "slope at 6-bit resolution, getSlopeEx(6)");
-  addColumn<int16_t>(*lctTable, "bend", matches, [](const LCTMatch& m) { return m.lct->getBend(); }, "bend (L/R)");
+  addColumn<int16_t>(*lctTable, "bend", lcts, [](const LCTMatch& m) { return m.lct->getBend(); }, "bend (L/R)");
   addColumn<int16_t>(
-      *lctTable, "bx", matches, [](const LCTMatch& m) { return m.lct->getBX(); }, "BX (1 bit in unpacked data)");
+      *lctTable, "bx", lcts, [](const LCTMatch& m) { return m.lct->getBX(); }, "BX (1 bit in unpacked data)");
   addColumn<int16_t>(
-      *lctTable, "trknmb", matches, [](const LCTMatch& m) { return m.lct->getTrknmb(); }, "track number (1 or 2)");
+      *lctTable, "trknmb", lcts, [](const LCTMatch& m) { return m.lct->getTrknmb(); }, "track number (1 or 2)");
   addColumn<int16_t>(
       *lctTable,
       "type",
-      matches,
+      lcts,
       [](const LCTMatch& m) { return m.lct->getType(); },
       "LCT type (CSCCorrelatedLCTDigi::Type; emulator only)");
   addColumn<int16_t>(
       *lctTable,
       "gemLayer",
-      matches,
+      lcts,
       [](const LCTMatch& m) { return m.lct->getGemLayerUsedForSlopeComputation(); },
       "GEM layer used for the slope: emulator 1, 2, 0 = none; Run3-b unpacked data the raw 1-bit field");
-  addColumn<int16_t>(
-      *lctTable,
-      "nMuonMatch",
-      matches,
-      [](const LCTMatch& m) { return m.muons.size(); },
-      "number of LCTMuonMatch rows of this LCT");
 
   // Muon rows are the selected muons, so a row index is the muon's index in the selected (muonCut) collection.
   std::vector<size_t> muonRows(muons.size());
@@ -285,9 +256,7 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
     muonRows[m] = m;
   const auto mu = [&muons](size_t m) -> const reco::Muon& { return muons[m]; };
   auto muonTable = std::make_unique<nanoaod::FlatTable>(muons.size(), "Muon", false);
-  muonTable->setDoc(
-      "reco muons passing muonCut (default pT > 10 GeV and medium or tight cut-based ID), in the order "
-      "of the muon collection");
+  muonTable->setDoc("reco muons passing muonCut = '" + muonCutString_ + "', in the order of the muon collection");
   addColumn<float>(*muonTable, "pt", muonRows, [&](size_t m) { return mu(m).pt(); }, "pt");
   addColumn<float>(*muonTable, "eta", muonRows, [&](size_t m) { return mu(m).eta(); }, "eta");
   addColumn<float>(*muonTable, "phi", muonRows, [&](size_t m) { return mu(m).phi(); }, "phi");
@@ -362,108 +331,22 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       muonRows,
       [&](size_t m) { return mu(m).outerTrack().isNonnull() ? mu(m).outerTrack()->phi() : 0.f; },
       "phi of the standalone track, 0 if none (standalonePt == 0)");
-  addColumn<int16_t>(
-      *muonTable,
-      "nCSCSegments",
-      muonRows,
-      [&](size_t m) { return matcher_.muonSegments(mu(m)).size(); },
-      "number of CSC segments of this muon for matcher.segmentSource, including those without a valid key position");
-  addColumn<int16_t>(
-      *muonTable,
-      "nLCTMatch",
-      muonRows,
-      [&](size_t m) { return muonNLCTMatch[m]; },
-      "number of LCTMuonMatch rows of this muon");
-
-  using Source = CSCLCTRecoMuonMatcher::SegmentSource;
-  auto linkTable = std::make_unique<nanoaod::FlatTable>(links.size(), "LCTMuonMatch", false);
-  linkTable->setDoc(
-      "LCT-muon pairs within the matcher windows (many-to-many), grouped by LCT, closest muon first; residuals are "
-      "LCT - segment at the key layer (layer 3), LCT units");
-  addColumn<int16_t>(*linkTable, "lctIdx", links, [](const LinkRow& l) { return l.lctIdx; }, "row in LCT");
-  addColumn<int16_t>(*linkTable, "muonIdx", links, [](const LinkRow& l) { return l.muonIdx; }, "row in Muon");
-  addColumn<uint8_t>(
-      *linkTable,
-      "segSource",
-      links,
-      [](const LinkRow& l) { return l.match->source == Source::Standalone ? 0 : 1; },
-      "segment taken from 0 = the standalone-muon fit, 1 = reco::Muon::matches()");
-  addColumn<uint8_t>(
-      *linkTable,
-      "segRing",
-      links,
-      [](const LinkRow& l) { return l.match->segment->cscDetId().ring(); },
-      "ring of the segment (ME1/1: 1 = ME1b, 4 = ME1a)");
-  addColumn<uint8_t>(
-      *linkTable,
-      "segNHits",
-      links,
-      [](const LinkRow& l) { return l.match->segment->nRecHits(); },
-      "number of rechits of the segment");
-  addColumn<float>(
-      *linkTable,
-      "segChi2ndof",
-      links,
-      [](const LinkRow& l) { return l.match->segment->chi2() / std::max(1, l.match->segment->degreesOfFreedom()); },
-      "segment chi2 / max(1, ndof)");
-  addColumn<float>(
-      *linkTable, "segTime", links, [](const LinkRow& l) { return l.match->segment->time(); }, "segment time, ns");
-  addColumn<bool>(
-      *linkTable,
-      "keyFromRecHit",
-      links,
-      [](const LinkRow& l) { return l.match->keyFromRecHit; },
-      "key position from the segment's layer-3 rechit, else from the segment projected onto layer 3");
-  addColumn<int16_t>(
-      *linkTable, "keyHS", links, [](const LinkRow& l) { return l.match->key.hs; }, "segment key half-strip");
-  addColumn<float>(
-      *linkTable, "keyES", links, [](const LinkRow& l) { return l.match->key.es; }, "segment eighth-strip (CCLUT)");
-  addColumn<int16_t>(
-      *linkTable, "keyWG", links, [](const LinkRow& l) { return l.match->key.wg; }, "segment key wire group");
-  addColumn<int16_t>(
-      *linkTable, "dHS", links, [](const LinkRow& l) { return l.match->deltaHalfStrip; }, "LCT - segment half-strip");
-  addColumn<float>(
-      *linkTable,
-      "dES",
-      links,
-      [](const LinkRow& l) { return l.match->deltaEighthStrip; },
-      "LCT - segment eighth-strip");
-  addColumn<int16_t>(
-      *linkTable, "dWG", links, [](const LinkRow& l) { return l.match->deltaWireGroup; }, "LCT - segment wire group");
 
   // MuonCSCChamber: the CSC chamber matches of the stored muons, in muon order, then in the order of matches()
   const CSCGeometry& geometry = setup.getData(cscGeomToken_);
   std::vector<ChamberRow> chambers;
   for (size_t m = 0; m < muons.size(); ++m) {
-    // chambers (with ring) where the muon has a segment, per source
-    auto segmentChambers = [&](const CSCLCTRecoMuonMatcher& source) {
-      std::set<CSCDetId> ids;
-      for (const auto& [seg, from] : source.muonSegments(muons[m]))
-        ids.insert(seg->cscDetId().chamberId());
-      return ids;
-    };
-    const auto matcherChambers = segmentChambers(matcher_);
-    const auto standaloneChambers = segmentChambers(standaloneSource_);
-    const auto arbitratedChambers = segmentChambers(matchesSource_);
     for (const auto& cm : muons[m].matches()) {
       if (cm.detector() != MuonSubdetId::CSC)
         continue;
-      ChamberRow row{int16_t(m), &cm, CSCDetId(cm.id.rawId()), {}};
-      row.hasMatcherSegment = matcherChambers.count(row.id) > 0;
-      row.hasStandaloneSegment = standaloneChambers.count(row.id) > 0;
-      row.hasArbitratedSegment = arbitratedChambers.count(row.id) > 0;
-      // the chamber match is the track state on the chamber surface (local z = 0): a straight line to layer 3
-      const auto p3 =
-          csclct::lineAtKeyLayer(geometry, row.id, LocalPoint(cm.x, cm.y, 0.f), LocalVector(cm.dXdZ, cm.dYdZ, 1.f));
-      if (p3) {
-        row.key = csclct::toLCTSpace(geometry, row.id, *p3);
-        const CSCLayer* L3 = geometry.chamber(row.id)->layer(CSCConstants::KEY_CLCT_LAYER);
-        const auto limits = L3->geometry()->yLimitsOfStripPlane();
-        const float y = L3->toLocal(*p3).y();
-        row.inStripPlane = limits.first <= y && y <= limits.second;
-        row.eta = p3->eta();
-        row.phi = p3->phi();
-      }
+      ChamberRow row{int16_t(m), &cm, CSCDetId(cm.id.rawId())};
+      const CSCChamber* ch = geometry.chamber(row.id);
+      if (ch == nullptr)
+        throw cms::Exception("LogicError")
+            << row.id << " is not in the CSC geometry: the job's geometry differs from the RECO's";
+      const GlobalPoint gp = ch->toGlobal(LocalPoint(cm.x, cm.y, 0.f));
+      row.eta = gp.eta();
+      row.phi = gp.phi();
       chambers.push_back(row);
     }
   }
@@ -473,8 +356,8 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "else the standalone track) propagated by reco (TrackDetectorAssociator) to every CSC chamber whose edge "
       "distances are both below 5 cm (muons1stStep; none if no chamber within dR 0.2 of the track has a segment or "
       "hit, preselectMuonTracks); in muon order, then in the order of matches(). ME1/1: normally a ring-1 (ME1b) and "
-      "a ring-4 (ME1a) row with nearly the same state and edges; keyInStripPlane tells which ring the track "
-      "crosses");
+      "a ring-4 (ME1a) row with nearly the same state and edges; MuonCSCLayer_propInStripPlane tells which ring's "
+      "strip plane the track crosses");
   addColumn<int16_t>(*chamberTable, "muonIdx", chambers, [](const ChamberRow& r) { return r.muonIdx; }, "row in Muon");
   addColumn<int16_t>(*chamberTable, "endcap", chambers, [](const ChamberRow& r) { return r.id.zendcap(); }, "+1 or -1");
   addColumn<int16_t>(*chamberTable, "station", chambers, [](const ChamberRow& r) { return r.id.station(); }, "station");
@@ -547,71 +430,24 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       [](const ChamberRow& r) { return r.match->nDigisInRange; },
       "fired strip digis (an ADC sample > pedestal + 13.3) in layers 1-6 of this ring within 25 cm in x of the "
       "propagated position, strip x at the track's y (reco MuonShowerDigiFiller; 0 also when reco did not fill it)");
-  addColumn<int16_t>(
-      *chamberTable,
-      "keyHS",
-      chambers,
-      [](const ChamberRow& r) { return r.key.hs; },
-      "propagated position carried to layer 3 (straight line, chamber frame), converted with this "
-      "ring's layer-3 geometry: key half-strip, LCT units (ME1a: 128-223), clamped to the ring's range when the "
-      "point is outside the strips");
   addColumn<float>(
       *chamberTable,
-      "keyES",
+      "eta",
       chambers,
-      [](const ChamberRow& r) { return r.key.es; },
-      "the same point: eighth-strip, CCLUT convention (4*keyHS at the half-strip centre); saturates at -2 and "
-      "8N-2 (ME1a: 510 and 894) when the point is outside the strips (strip coordinate clamped to [0, N])");
-  addColumn<int16_t>(
-      *chamberTable,
-      "keyWG",
-      chambers,
-      [](const ChamberRow& r) { return r.key.wg; },
-      "the same point: wire group of the nearest wire, 0-based; -1 beyond the first or last wire or at a dead "
-      "wire (not bounded along the wires)");
-  addColumn<bool>(
-      *chamberTable,
-      "keyValid",
-      chambers,
-      [](const ChamberRow& r) { return r.key.valid(); },
-      "the layer-3 point has a strip coordinate inside (0, N) and a wire group; the ring's y range is not "
-      "tested (ME1/1: often true in both rows, use keyInStripPlane)");
-  addColumn<bool>(
-      *chamberTable,
-      "keyInStripPlane",
-      chambers,
-      [](const ChamberRow& r) { return r.inStripPlane; },
-      "the layer-3 point lies inside the y range of this ring's strip plane (ME1/1: the ring the track crosses; "
-      "neither row beyond the outer ends of ME1/1)");
+      [](const ChamberRow& r) { return r.eta; },
+      "eta of the propagated position on the chamber surface (x, y)");
   addColumn<float>(
-      *chamberTable, "eta", chambers, [](const ChamberRow& r) { return r.eta; }, "eta of the layer-3 point");
-  addColumn<float>(
-      *chamberTable, "phi", chambers, [](const ChamberRow& r) { return r.phi; }, "phi of the layer-3 point");
+      *chamberTable,
+      "phi",
+      chambers,
+      [](const ChamberRow& r) { return r.phi; },
+      "phi of the propagated position on the chamber surface (x, y)");
   addColumn<int16_t>(
       *chamberTable,
       "nSegmentMatches",
       chambers,
       [](const ChamberRow& r) { return r.match->segmentMatches.size(); },
       "CSC segments reco matched to the propagated track in this chamber, whatever their arbitration flags");
-  addColumn<bool>(
-      *chamberTable,
-      "hasMatcherSegment",
-      chambers,
-      [](const ChamberRow& r) { return r.hasMatcherSegment; },
-      "the matcher's segmentSource gives this muon a segment in this chamber (ring included), with or without a "
-      "valid key position (the matcher skips those without)");
-  addColumn<bool>(
-      *chamberTable,
-      "hasStandaloneSegment",
-      chambers,
-      [](const ChamberRow& r) { return r.hasStandaloneSegment; },
-      "the muon's standalone track has a CSC segment in this chamber (segmentSource standalone)");
-  addColumn<bool>(
-      *chamberTable,
-      "hasArbitratedSegment",
-      chambers,
-      [](const ChamberRow& r) { return r.hasArbitratedSegment; },
-      "a segment with BestInChamberByDR and BelongsToTrackByDR in this chamber (segmentSource matches)");
 
   // MuonCSCSegment: the CSC segments of the stored muons, in muon order. Per muon, source 0 first: every valid 4D CSC
   // hit (CSCSegment) of the standalone track, in outerTrack()->recHits() order; then source 1: every segment match of
@@ -1240,7 +1076,6 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
 
   event.put(std::move(lctTable), "lct");
   event.put(std::move(muonTable), "muon");
-  event.put(std::move(linkTable), "lctMuonMatch");
   event.put(std::move(chamberTable), "muonCSCChamber");
   event.put(std::move(gemTable), "muonGEMChamber");
   event.put(std::move(gemHitTable), "muonGEMHitMatch");

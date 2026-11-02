@@ -1,13 +1,14 @@
 # NanoAOD-format ntuple of CSC LCTs, reco muons, trigger information and simulation truth, one entry per event. Every
 # event and every LCT is stored, and the reco muons passing cscLCTRecoMuonTable.muonCut (default pT > 10 GeV and the
-# medium or tight cut-based ID); tag-and-probe selections are applied when the ntuple is analysed.
-#   LCT, Muon, LCTMuonMatch,            cscLCTRecoMuonTable (CSCLCTRecoMuonTableProducer)
-#   MuonCSCChamber, MuonGEMChamber,
+# medium or tight cut-based ID); LCT matching and tag-and-probe selections are applied when the ntuple is analysed.
+#   LCT, Muon, MuonCSCChamber,          cscLCTRecoMuonTable (CSCLCTRecoMuonTableProducer)
+#   MuonCSCSegment, MuonCSCLayer,
+#   MuonCSCRecHitADC, MuonGEMChamber,
 #   MuonGEMHitMatch
 #   TrigObj (muon objects only), L1Mu   the central NanoAOD tables; TrigObj needs the PAT trigger chain of miniAOD, run
 #                                       here on hltTriggerSummaryAOD
 #   HLT_* and L1_* bits                 TriggerResults of the HLT process and l1bits, written by NanoAODOutputModule
-#   GenPart, SimTrack, LCTSimTrackMatch gemCscNanoMCTask (MC only)
+#   GenPart, SimTrack, SimTrackCSCLayer gemCscNanoMCTask (MC only)
 # Module labels end in "Table" where NanoAODOutputModule must keep the product (keep nanoaodFlatTable_*Table_*_*).
 # The PAT trigger and NanoAOD modules keep their central labels (patTrigger, triggerObjectTable, l1bits, ...): this cff
 # cannot be loaded into a job that also runs the PAT or NANO steps.
@@ -82,7 +83,7 @@ phase2_trigger.toReplaceWith(l1bits, _l1tP2GTTrigConvert.clone())
 phase2_trigger.toReplaceWith(gemCscNanoTask, gemCscNanoTask.copyAndAdd(staMuTable, gmtTkMuTable))
 
 # MC: the generator muons with all their ancestors, written as the central GenPart table (without the miniAOD-only
-# isolation and at full float precision), and the SimTracks with their links to GenPart and to the LCTs.
+# isolation and at full float precision), and the SimTracks with their links to GenPart and their CSC layers.
 cscLCTGenParticles = cms.EDProducer(
     "GenParticlePruner",
     src=cms.InputTag("genParticles"),
@@ -91,9 +92,6 @@ cscLCTGenParticles = cms.EDProducer(
 genParticleTable = _genParticleTable.clone(src="cscLCTGenParticles", externalVariables=cms.PSet())
 for _var in ("pt", "eta", "phi", "mass"):
     getattr(genParticleTable.variables, _var).precision = -1
-cscLCTSimTrackTable = cscLCTSimTrackTableProducer.clone(
-    lctTable=cms.InputTag("cscLCTRecoMuonTable", "lct"),
-    genPartAssociation="cscLCTGenParticles",
-)
+cscLCTSimTrackTable = cscLCTSimTrackTableProducer.clone(genPartAssociation="cscLCTGenParticles")
 
 gemCscNanoMCTask = cms.Task(cscLCTGenParticles, genParticleTable, cscLCTSimTrackTable)

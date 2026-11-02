@@ -4,16 +4,14 @@
 #
 #   cmsRun runGemCscNano_cfg.py inputFiles=<file> globalTag=<GT of the input> [era=Run3_2026] [geometry=<name>] \
 #       [mc=True] [lcts=<module[:instance]>] [maxEvents=100] [secondaryInputFiles=<RAW parent>] [outputFile=...] \
-#       [segmentSource=auto|standalone|matches] [maxDeltaHalfStrip=N] [maxDeltaWireGroup=N] [lctBXWindow=N] \
 #       [hltProcess=HLT] [muonCut=<reco::Muon cut; empty = all muons>]
 #
 # Every event of the input is written (tag and probe is done on the ntuple). LCTs: data default = unpacked from
 # rawDataCollector here (no data tier stores them); MC default = the emulator LCTs simCscTriggerPrimitiveDigis of the
 # DIGI step (TMB level); a GEN-SIM-RAW without them (e.g. central Run3Winter25 DY) needs
 # lcts=muonCSCDigis:MuonCSCCorrelatedLCTDigi (unpacked from its RAW). geometry: empty = from the global tag (Run 3); for Phase 2 the name of a
-# Configuration/Geometry Geometry<name>Reco_cff, e.g. ExtendedRun4D121. The match windows apply to the LCT-muon and
-# (MC) the LCT-SimTrack links. lctBXWindow (default -1 = all LCTs): emulator LCTs span the readout window around BX 8,
-# data LCTs carry a 1-bit BX and must keep -1.
+# Configuration/Geometry Geometry<name>Reco_cff, e.g. ExtendedRun4D121. Every LCT digi of the collection is stored
+# (emulator LCTs span the readout window around BX 8, data LCTs carry a 1-bit BX).
 #
 # Emulator LCTs from data: append to a copy of L1Trigger/CSCTriggerPrimitives/test/runCSCTriggerPrimitiveProducer_cfg.py
 # (it sets process.schedule, hard-codes the data GT 140X_dataRun3_v3 and has no NanoAOD output):
@@ -21,7 +19,6 @@
 #   process.GlobalTag = GlobalTag(process.GlobalTag, "<GT of the runs>", "")
 #   process.load("L1Trigger.GemCscNano.GemCscNano_cff")
 #   process.cscLCTRecoMuonTable.lcts = "cscTriggerPrimitiveDigis"  # TMB level (L1TdeCSCTPG uses :MPCSORTED)
-#   process.cscLCTRecoMuonTable.matcher.lctBXWindow = <N>         # emulator LCTs span BX 5-11 around 8
 #   process.out = <the NanoAODOutputModule of this file; its l1bits keep statement then names the process L1CSCTPG>
 #   process.e = cms.EndPath(process.out, process.gemCscNanoTask)
 #   process.schedule.append(process.e)
@@ -45,22 +42,14 @@ options.register("era", "Run3_2026", VarParsing.multiplicity.singleton, VarParsi
 options.register("geometry", "", VarParsing.multiplicity.singleton, VarParsing.varType.string,
                  "empty: geometry from the global tag; else Configuration.Geometry.Geometry<geometry>Reco_cff")
 options.register("mc", False, VarParsing.multiplicity.singleton, VarParsing.varType.bool,
-                 "simulation: add GenPart, SimTrack and LCTSimTrackMatch")
+                 "simulation: add GenPart, SimTrack and SimTrackCSCLayer")
 options.register("muonCut", _defaults.muonCut.value(), VarParsing.multiplicity.singleton, VarParsing.varType.string,
-                 "reco::Muon selection: only these muons are stored (Muon) and matched")
+                 "reco::Muon selection: only these muons are stored (Muon and the per-muon tables)")
 options.register("lcts", "", VarParsing.multiplicity.singleton, VarParsing.varType.string,
                  "LCT collection; empty: data muonCSCDigis:MuonCSCCorrelatedLCTDigi (unpacked here), "
                  "MC simCscTriggerPrimitiveDigis")
 options.register("hltProcess", "HLT", VarParsing.multiplicity.singleton, VarParsing.varType.string,
                  "process name of the HLT products (TriggerResults, hltTriggerSummaryAOD)")
-options.register("segmentSource", _defaults.matcher.segmentSource.value(), VarParsing.multiplicity.singleton,
-                 VarParsing.varType.string, "standalone | matches | auto")
-options.register("maxDeltaHalfStrip", _defaults.matcher.maxDeltaHalfStrip.value(),
-                 VarParsing.multiplicity.singleton, VarParsing.varType.int, "LCT-muon match window in key half-strips")
-options.register("maxDeltaWireGroup", _defaults.matcher.maxDeltaWireGroup.value(),
-                 VarParsing.multiplicity.singleton, VarParsing.varType.int, "LCT-muon match window in key wire groups")
-options.register("lctBXWindow", _defaults.matcher.lctBXWindow.value(), VarParsing.multiplicity.singleton,
-                 VarParsing.varType.int, "keep LCTs with |BX - 8| <= lctBXWindow; < 0: all (data: keep -1)")
 options.setType("outputFile", VarParsing.varType.string)  # no automatic _numEvent<N> suffix
 options.setDefault("outputFile", "GemCscNano.root")
 options.setDefault("maxEvents", 100)
@@ -92,12 +81,6 @@ process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(options.maxEven
 process.load("L1Trigger.GemCscNano.GemCscNano_cff")
 process.cscLCTRecoMuonTable.lcts = lcts
 process.cscLCTRecoMuonTable.muonCut = options.muonCut
-process.cscLCTRecoMuonTable.matcher.segmentSource = options.segmentSource
-process.cscLCTRecoMuonTable.matcher.maxDeltaHalfStrip = options.maxDeltaHalfStrip
-process.cscLCTRecoMuonTable.matcher.maxDeltaWireGroup = options.maxDeltaWireGroup
-process.cscLCTRecoMuonTable.matcher.lctBXWindow = options.lctBXWindow
-process.cscLCTSimTrackTable.maxDeltaHalfStrip = options.maxDeltaHalfStrip
-process.cscLCTSimTrackTable.maxDeltaWireGroup = options.maxDeltaWireGroup
 process.patTrigger.processName = options.hltProcess
 for _module in (process.slimmedPatTrigger, process.unpackedPatTrigger):
     _module.triggerResults = cms.InputTag("TriggerResults", "", options.hltProcess)
