@@ -8,7 +8,8 @@
 //                 by reco to the chamber, that position carried to the key layer in LCT units, and which segments
 //                 the muon has in the chamber;
 //   MuonGEMChamber one row per GEM chamber match of each stored muon: the propagated track on the chamber surface,
-//                 the eta partition, strip and pad of that point; MuonGEMHitMatch: the GEM rechits reco matched there.
+//                 the eta partition, strip and pad where its line crosses the partition plane; MuonGEMHitMatch: the
+//                 GEM rechits reco matched there.
 // No event selection is applied: tag and probe is left to the analysis of the ntuple.
 
 #include "CommonTools/Utils/interface/StringCutObjectSelector.h"
@@ -84,7 +85,7 @@ namespace {
   struct GEMChamberRow {
     int16_t muonIdx;
     const reco::MuonChamberMatch* match;
-    GEMDetId id;                 // the chamber of the match (layer 0: a GE0 super-chamber)
+    GEMDetId id;                 // the chamber of the match (layer 0: a super-chamber)
     int16_t roll = 0;            // eta partition whose bounds hold the crossing point, 0 if none
     float strip = -1.f;          // strip coordinate of the crossing point in that partition, -1 if none
     float pad = -1.f;            // pad coordinate of the crossing point in that partition, -1 if none
@@ -589,7 +590,8 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       const GeomDet* det = row.id.layer() > 0 ? static_cast<const GeomDet*>(gemGeometry.chamber(row.id))
                                               : static_cast<const GeomDet*>(gemGeometry.superChamber(row.id));
       if (det == nullptr)
-        throw cms::Exception("LogicError") << "GEM chamber match " << row.id << " is not in the GEM geometry";
+        throw cms::Exception("LogicError") << "GEM chamber match " << row.id
+                                           << " is not in the GEM geometry: the job's geometry differs from the RECO's";
       // the chamber match is the track state on the chamber surface (local z = 0)
       const GlobalPoint gp = det->toGlobal(LocalPoint(cm.x, cm.y, 0.f));
       row.eta = gp.eta();
@@ -623,10 +625,11 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
   gemTable->setDoc(
       "GEM chamber matches of the stored muons (reco::Muon::matches(), GEM subdetector): the muon's track (the inner "
       "track if any, else the standalone track) propagated by reco (TrackDetectorAssociator) to every GEM chamber "
-      "whose edge distances are both below 5 cm (muons1stStep; none if no chamber within dR 0.2 of the track has a "
-      "segment or hit, preselectMuonTracks). GE1/1 and GE2/1 rows are per-layer chambers, with matched rechits "
-      "(MuonGEMHitMatch) only if the reco step had GEM rechits; GE0 rows are super-chambers (layer 0), with GEM "
-      "segments. In muon order, then in the order of matches()");
+      "whose edge distances are both below 5 cm (muons1stStep; no chamber matches at all if no muon chamber within "
+      "dR 0.2 of the track has a segment or hit, preselectMuonTracks, where GEM rechits do not count). RECO made with "
+      "CMSSW_12_5_0 or later: GE1/1 and GE2/1 rows are per-layer chambers, with matched rechits (MuonGEMHitMatch) "
+      "only if the reco step had GEM rechits, and GE0 rows are super-chambers (layer 0) with GEM segments; older "
+      "RECO: super-chamber rows for every station, no rechits. In muon order, then in the order of matches()");
   addColumn<int16_t>(
       *gemTable, "muonIdx", gemChambers, [](const GEMChamberRow& r) { return r.muonIdx; }, "row in Muon");
   addColumn<int16_t>(
@@ -643,7 +646,7 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "layer",
       gemChambers,
       [](const GEMChamberRow& r) { return r.id.layer(); },
-      "layer of the chamber match (GE1/1, GE2/1: 1-2; 0 = a GE0 super-chamber)");
+      "layer of the chamber match (1-2; 0 = a super-chamber: GE0, or any station in RECO before CMSSW_12_5_0)");
   addColumn<int16_t>(
       *gemTable, "chamber", gemChambers, [](const GEMChamberRow& r) { return r.id.chamber(); }, "chamber");
   addColumn<float>(
@@ -651,13 +654,13 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "x",
       gemChambers,
       [](const GEMChamberRow& r) { return r.match->x; },
-      "propagated track position x, chamber frame (GE0: super-chamber frame), on its surface (local z = 0), cm");
+      "propagated track position x, frame of the row's chamber or super-chamber, on its surface (local z = 0), cm");
   addColumn<float>(
       *gemTable,
       "y",
       gemChambers,
       [](const GEMChamberRow& r) { return r.match->y; },
-      "propagated track position y, chamber frame (GE0: super-chamber frame), on its surface (local z = 0), cm");
+      "propagated track position y, frame of the row's chamber or super-chamber, on its surface (local z = 0), cm");
   addColumn<float>(
       *gemTable,
       "xErr",
@@ -714,7 +717,7 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "eta partition (GEMDetId roll) whose bounds hold the point where the straight line through the propagated "
       "state (x, y, dXdZ, dYdZ) crosses the partition plane (off the chamber surface; reco's rechit border cut "
       "projects the surface point orthogonally instead); 0 if none (in a gap between partitions, outside the active "
-      "area, dXdZ = 9999, or a GE0 row)");
+      "area, dXdZ = 9999, or a super-chamber row)");
   addColumn<float>(
       *gemTable,
       "strip",
@@ -745,8 +748,9 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "nSegmentMatches",
       gemChambers,
       [](const GEMChamberRow& r) { return r.match->gemMatches.size(); },
-      "GEM segments reco matched in this chamber: GE0 rows only (reco attaches GEM segments to super-chambers, "
-      "which its muon detector associator builds only for GE0)");
+      "GEM segments reco matched in this chamber: super-chamber rows only (reco attaches GEM segments to "
+      "super-chambers; its muon detector associator builds them for GE0 only since CMSSW_12_5_0, for every station "
+      "before)");
 
   auto gemHitTable = std::make_unique<nanoaod::FlatTable>(gemHits.size(), "MuonGEMHitMatch", false);
   gemHitTable->setDoc(
