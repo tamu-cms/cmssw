@@ -6,16 +6,20 @@
 //                 grouped by LCT, closest muon first;
 //   MuonCSCChamber one row per CSC chamber match (reco::MuonChamberMatch) of each stored muon: the track propagated
 //                 by reco to the chamber, that position carried to the key layer in LCT units, and which segments
-//                 the muon has in the chamber.
+//                 the muon has in the chamber;
+//   MuonGEMChamber one row per GEM chamber match of each stored muon: the propagated track on the chamber surface,
+//                 the eta partition, strip and pad of that point; MuonGEMHitMatch: the GEM rechits reco matched there.
 // No event selection is applied: tag and probe is left to the analysis of the ntuple.
 
 #include "CommonTools/Utils/interface/StringCutObjectSelector.h"
 #include "DataFormats/CSCDigi/interface/CSCConstants.h"
 #include "DataFormats/CSCDigi/interface/CSCCorrelatedLCTDigiCollection.h"
 #include "DataFormats/CSCRecHit/interface/CSCSegment.h"
+#include "DataFormats/MuonDetId/interface/GEMDetId.h"
 #include "DataFormats/MuonDetId/interface/MuonSubdetId.h"
 #include "DataFormats/MuonReco/interface/Muon.h"
 #include "DataFormats/MuonReco/interface/MuonChamberMatch.h"
+#include "DataFormats/MuonReco/interface/MuonGEMHitMatch.h"
 #include "DataFormats/MuonReco/interface/MuonFwd.h"
 #include "DataFormats/NanoAOD/interface/FlatTable.h"
 #include "DataFormats/TrackReco/interface/Track.h"
@@ -31,6 +35,7 @@
 #include "FWCore/Utilities/interface/Exception.h"
 #include "Geometry/CSCGeometry/interface/CSCGeometry.h"
 #include "Geometry/CSCGeometry/interface/CSCLayer.h"
+#include "Geometry/GEMGeometry/interface/GEMGeometry.h"
 #include "Geometry/Records/interface/MuonGeometryRecord.h"
 #include "L1Trigger/GemCscNano/interface/CSCLCTRecoMuonMatcher.h"
 
@@ -75,6 +80,23 @@ namespace {
     bool hasArbitratedSegment = false;  // the arbitrated chamber matches have a segment here (segmentSource matches)
   };
 
+  // One GEM chamber match of a stored muon, with the eta partition, strip and pad of the propagated point.
+  struct GEMChamberRow {
+    int16_t muonIdx;
+    const reco::MuonChamberMatch* match;
+    GEMDetId id;                 // the chamber of the match (layer 0: a super-chamber)
+    int16_t roll = 0;            // eta partition whose bounds hold the point, 0 if none
+    float strip = -1.f;          // strip coordinate in that partition, -1 if none
+    float pad = -1.f;            // pad coordinate in that partition, -1 if none
+    float eta = 0.f, phi = 0.f;  // of the point (0 if the chamber is not in the geometry)
+  };
+
+  struct GEMHitRow {
+    int16_t chamberIdx;
+    const reco::MuonGEMHitMatch* hit;
+    float dx;
+  };
+
   struct LinkRow {
     int16_t lctIdx;
     int16_t muonIdx;
@@ -95,6 +117,7 @@ private:
   const edm::EDGetTokenT<reco::MuonCollection> muonToken_;
   const edm::EDGetTokenT<reco::VertexCollection> vertexToken_;
   const edm::ESGetToken<CSCGeometry, MuonGeometryRecord> cscGeomToken_;
+  const edm::ESGetToken<GEMGeometry, MuonGeometryRecord> gemGeomToken_;
   const StringCutObjectSelector<reco::Muon> muonCut_;
   const CSCLCTRecoMuonMatcher matcher_;
   // the two explicit segment sources, for the MuonCSCChamber flags (their windows are not used)
@@ -107,6 +130,7 @@ CSCLCTRecoMuonTableProducer::CSCLCTRecoMuonTableProducer(const edm::ParameterSet
       muonToken_(consumes(ps.getParameter<edm::InputTag>("muons"))),
       vertexToken_(consumes(ps.getParameter<edm::InputTag>("vertices"))),
       cscGeomToken_(esConsumes()),
+      gemGeomToken_(esConsumes()),
       muonCut_(ps.getParameter<std::string>("muonCut")),
       matcher_(ps.getParameter<edm::ParameterSet>("matcher")),
       standaloneSource_(CSCLCTRecoMuonMatcher::Config(CSCLCTRecoMuonMatcher::SegmentSource::Standalone,
@@ -121,6 +145,8 @@ CSCLCTRecoMuonTableProducer::CSCLCTRecoMuonTableProducer(const edm::ParameterSet
   produces<nanoaod::FlatTable>("muon");
   produces<nanoaod::FlatTable>("lctMuonMatch");
   produces<nanoaod::FlatTable>("muonCSCChamber");
+  produces<nanoaod::FlatTable>("muonGEMChamber");
+  produces<nanoaod::FlatTable>("muonGEMHitMatch");
 }
 
 void CSCLCTRecoMuonTableProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
@@ -552,10 +578,194 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       [](const ChamberRow& r) { return r.hasArbitratedSegment; },
       "a segment with BestInChamberByDR and BelongsToTrackByDR in this chamber (segmentSource matches)");
 
+  // MuonGEMChamber: the GEM chamber matches of the stored muons, in muon order, then in the order of matches()
+  const GEMGeometry& gemGeometry = setup.getData(gemGeomToken_);
+  std::vector<GEMChamberRow> gemChambers;
+  for (size_t m = 0; m < muons.size(); ++m)
+    for (const auto& cm : muons[m].matches()) {
+      if (cm.detector() != MuonSubdetId::GEM)
+        continue;
+      GEMChamberRow row{int16_t(m), &cm, GEMDetId(cm.id.rawId())};
+      const GeomDet* det = row.id.layer() > 0 ? static_cast<const GeomDet*>(gemGeometry.chamber(row.id))
+                                              : static_cast<const GeomDet*>(gemGeometry.superChamber(row.id));
+      if (det != nullptr) {
+        // the chamber match is the track state on the chamber surface (local z = 0)
+        const GlobalPoint gp = det->toGlobal(LocalPoint(cm.x, cm.y, 0.f));
+        row.eta = gp.eta();
+        row.phi = gp.phi();
+        if (row.id.layer() > 0)
+          for (const GEMEtaPartition* part : gemGeometry.chamber(row.id)->etaPartitions()) {
+            const LocalPoint lp = part->toLocal(gp);
+            if (part->surface().bounds().inside(Local2DPoint(lp.x(), lp.y()))) {
+              row.roll = part->id().roll();
+              row.strip = part->strip(lp);
+              row.pad = part->pad(lp);
+              break;
+            }
+          }
+      }
+      gemChambers.push_back(row);
+    }
+  checkIndexRange(gemChambers.size(), "GEM chamber matches");
+  std::vector<GEMHitRow> gemHits;
+  for (size_t r = 0; r < gemChambers.size(); ++r)
+    for (const auto& hit : gemChambers[r].match->gemHitMatches)
+      gemHits.push_back({int16_t(r), &hit, hit.x - gemChambers[r].match->x});
+
+  auto gemTable = std::make_unique<nanoaod::FlatTable>(gemChambers.size(), "MuonGEMChamber", false);
+  gemTable->setDoc(
+      "GEM chamber matches of the stored muons (reco::Muon::matches(), GEM subdetector): the muon's track (the inner "
+      "track if any, else the standalone track) propagated by reco (TrackDetectorAssociator) to every GEM chamber "
+      "whose edge distances are both below 5 cm (muons1stStep). With GEM rechits in the input, GE1/1 and GE2/1 rows "
+      "are the per-layer chambers with their matched rechits (MuonGEMHitMatch); GE0 (station 0) and super-chambers "
+      "(layer 0) come from reco's segment path. In muon order, then in the order of matches()");
+  addColumn<int16_t>(
+      *gemTable, "muonIdx", gemChambers, [](const GEMChamberRow& r) { return r.muonIdx; }, "row in Muon");
+  addColumn<int16_t>(
+      *gemTable, "region", gemChambers, [](const GEMChamberRow& r) { return r.id.region(); }, "+1 or -1");
+  addColumn<int16_t>(
+      *gemTable,
+      "station",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.id.station(); },
+      "0 = GE0, 1 = GE1/1, 2 = GE2/1");
+  addColumn<int16_t>(*gemTable, "ring", gemChambers, [](const GEMChamberRow& r) { return r.id.ring(); }, "ring");
+  addColumn<int16_t>(
+      *gemTable,
+      "layer",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.id.layer(); },
+      "layer of the chamber match (GE1/1, GE2/1: 1-2; 0 = a super-chamber)");
+  addColumn<int16_t>(
+      *gemTable, "chamber", gemChambers, [](const GEMChamberRow& r) { return r.id.chamber(); }, "chamber");
+  addColumn<float>(
+      *gemTable,
+      "x",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.match->x; },
+      "propagated track position x, chamber frame, on the chamber surface (local z = 0), cm");
+  addColumn<float>(
+      *gemTable,
+      "y",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.match->y; },
+      "propagated track position y, chamber frame, on the chamber surface (local z = 0), cm");
+  addColumn<float>(
+      *gemTable,
+      "xErr",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.match->xErr; },
+      "propagation error on x, cm");
+  addColumn<float>(
+      *gemTable,
+      "yErr",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.match->yErr; },
+      "propagation error on y, cm");
+  addColumn<float>(
+      *gemTable,
+      "dXdZ",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.match->dXdZ; },
+      "propagated track direction dx/dz, chamber frame (9999 if the direction has no z component)");
+  addColumn<float>(
+      *gemTable,
+      "dYdZ",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.match->dYdZ; },
+      "propagated track direction dy/dz, chamber frame (9999 if the direction has no z component)");
+  addColumn<float>(
+      *gemTable,
+      "dXdZErr",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.match->dXdZErr; },
+      "propagation error on dx/dz (0 if the variance is not positive)");
+  addColumn<float>(
+      *gemTable,
+      "dYdZErr",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.match->dYdZErr; },
+      "propagation error on dy/dz (0 if the variance is not positive)");
+  addColumn<float>(
+      *gemTable,
+      "edgeX",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.match->edgeX; },
+      "distance in x of the propagated position to the edge of the chamber's trapezoid, cm (< 0: inside)");
+  addColumn<float>(
+      *gemTable,
+      "edgeY",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.match->edgeY; },
+      "distance in y of the propagated position to the edge of the chamber's trapezoid, cm (< 0: inside)");
+  addColumn<int16_t>(
+      *gemTable,
+      "roll",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.roll; },
+      "eta partition (GEMDetId roll) whose bounds hold the propagated point; 0 if none (between or "
+      "outside the partitions, or a super-chamber row)");
+  addColumn<float>(
+      *gemTable,
+      "strip",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.strip; },
+      "strip coordinate of the point in that partition (GEMEtaPartition::strip, 0 to nstrips); -1 if "
+      "roll is 0");
+  addColumn<float>(
+      *gemTable,
+      "pad",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.pad; },
+      "pad coordinate of the point in that partition (GEMEtaPartition::pad, 0 to npads); -1 if roll is 0");
+  addColumn<float>(*gemTable, "eta", gemChambers, [](const GEMChamberRow& r) { return r.eta; }, "eta of the point");
+  addColumn<float>(*gemTable, "phi", gemChambers, [](const GEMChamberRow& r) { return r.phi; }, "phi of the point");
+  addColumn<int16_t>(
+      *gemTable,
+      "nHitMatches",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.match->gemHitMatches.size(); },
+      "GEM rechits reco matched in this chamber (rows of MuonGEMHitMatch): the propagated point within "
+      "2 cm of the rechit's eta partition and |dx| <= 5 cm or dx^2 <= 16 xErr^2");
+  addColumn<int16_t>(
+      *gemTable,
+      "nSegmentMatches",
+      gemChambers,
+      [](const GEMChamberRow& r) { return r.match->gemMatches.size(); },
+      "GEM segments reco matched in this chamber (reco's segment path: GE0, or inputs without GEM "
+      "rechits)");
+
+  auto gemHitTable = std::make_unique<nanoaod::FlatTable>(gemHits.size(), "MuonGEMHitMatch", false);
+  gemHitTable->setDoc(
+      "GEM rechits reco matched to the GEM chamber matches (reco::MuonGEMHitMatch), grouped by "
+      "MuonGEMChamber row");
+  addColumn<int16_t>(
+      *gemHitTable,
+      "muonGEMChamberIdx",
+      gemHits,
+      [](const GEMHitRow& h) { return h.chamberIdx; },
+      "row in MuonGEMChamber");
+  addColumn<float>(
+      *gemHitTable,
+      "x",
+      gemHits,
+      [](const GEMHitRow& h) { return h.hit->x; },
+      "local x of the rechit, cm, as reco stores it (frame of the rechit's eta partition)");
+  addColumn<float>(
+      *gemHitTable,
+      "dx",
+      gemHits,
+      [](const GEMHitRow& h) { return h.dx; },
+      "x - MuonGEMChamber_x, cm: reco's matching variable (rechit partition frame minus chamber frame)");
+  addColumn<int16_t>(
+      *gemHitTable, "bx", gemHits, [](const GEMHitRow& h) { return h.hit->bx; }, "rechit BX (GEMRecHit::BunchX)");
+
   event.put(std::move(lctTable), "lct");
   event.put(std::move(muonTable), "muon");
   event.put(std::move(linkTable), "lctMuonMatch");
   event.put(std::move(chamberTable), "muonCSCChamber");
+  event.put(std::move(gemTable), "muonGEMChamber");
+  event.put(std::move(gemHitTable), "muonGEMHitMatch");
 }
 
 DEFINE_FWK_MODULE(CSCLCTRecoMuonTableProducer);
