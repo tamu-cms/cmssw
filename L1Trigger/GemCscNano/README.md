@@ -15,15 +15,15 @@ straight line evaluated at a layer, used by the producers.
 One `Events` entry per selected event, written by `NanoAODOutputModule`. Events: those with a stored muon (`muonCut`)
 with pT > 10 GeV and 0.9 < |eta| < 2.4, or in MC a final-state generator muon with pT > 10 GeV in that range
 (`gemCscNanoMuonFilter`, `gemCscNanoGenFilter`). The reco muons are preselected by `muonCut` (cfg option of the same
-name; an empty cut keeps all muons); every LCT digi is stored. After changing `muonCut` or `gemCscNanoSelection`
+name; an empty cut keeps all muons); every LCT, ALCT and CLCT digi is stored. After changing `muonCut` or `gemCscNanoSelection`
 in a cfg, call `setGemCscNanoSelection(process)` of the cff, so that the event preselection follows. Run 3 only (the cfg
 refuses other eras and requires `era=`). Row indices are 0-based, −1 = none.
 
 | Collection | Content | Producer |
 |---|---|---|
 | `LCT` | every digi of the LCT collection, in collection order: chamber, `valid` (`isValid()`), hs, es, wg, quality, patterns, slope (`slope6` = `getSlopeEx(6)`), bend, bx, type, gemLayer | `CSCLCTRecoMuonTableProducer` |
-| `ALCT` | every digi of the ALCT collection (`muonCSCDigis:MuonCSCALCTDigi`: in data the ALCT board's readout, two ALCT words per readout time bin, `bx` = the bin; invalid words dropped by the unpacker), in collection order: chamber, `valid`, quality, accelerator, collisionB, wg (`getKeyWG`), bx, trknmb, fullBX, `run3` (digi version), hmt (−1 for a Legacy digi) | `CSCLCTRecoMuonTableProducer` |
-| `CLCT` | every digi of the CLCT collection (`muonCSCDigis:MuonCSCCLCTDigi`: in data the two CLCTs of the (O)TMB header; invalid words dropped), in collection order: chamber, `valid`, quality, pattern, run3Pattern, slope, bend, stripType, cfeb, strip, hs (`getKeyStrip()` = 32 cfeb + strip), quartStripBit, eighthStripBit (eighth-strip = 4 hs + 2q + e for compCode ≥ 0; `getKeyStrip(8)` returns hs for a Legacy digi), bx, trknmb, fullBX, compCode (−1 = Legacy), `run3` | `CSCLCTRecoMuonTableProducer` |
+| `ALCT` | every digi of the ALCT collection (`muonCSCDigis:MuonCSCALCTDigi`: in data the ALCT board's readout, two ALCT words per readout time bin, `bx` = the bin; invalid words dropped by the unpacker), in collection order: chamber, `valid`, quality, accelerator, collisionB, wg (`getKeyWG`), bx, trknmb, fullBX (data: the ALCT header's BXN; MC: the packer's BXN count), `run3` (digi version), hmt (−1 for a Legacy digi: the unpacker builds Legacy ALCTs, the ALCT words' HMT bits go to the shower digis, not stored); MC: the DIGI step's emulator ALCTs, packed and unpacked | `CSCLCTRecoMuonTableProducer` |
+| `CLCT` | every digi of the CLCT collection (`muonCSCDigis:MuonCSCCLCTDigi`: in data the two CLCTs of the (O)TMB header; invalid words dropped), in collection order: chamber, `valid`, quality, pattern, run3Pattern, slope, bend, stripType, cfeb, strip, hs (`getKeyStrip()` = 32 cfeb + strip), quartStripBit, eighthStripBit (eighth-strip = 4 hs + 2q + e for compCode ≥ 0; `getKeyStrip(8)` returns hs for a Legacy digi), bx (data: the 2 lowest bits of the BXN at pre-trigger, a bunch phase; MC: the emulator BX modulo 4), trknmb, fullBX (data: the BXN at pre-trigger; MC: 0), compCode (−1 = Legacy), `run3`; `pattern` of the Run-3 header formats is looked up by the unpacker from bend and slope; MC: the emulator's readout CLCTs (the earliest BX in its window, at most two), packed in Run-3 formats in every chamber | `CSCLCTRecoMuonTableProducer` |
 | `Muon` | the reco muons passing `muonCut` (default `pt > 10 && (passed("CutBasedIdMedium") || passed("CutBasedIdTight"))`), in collection order (the doc string names the cut used): central NanoAOD names where the quantity is the same (pt, eta, phi, charge, isGlobal, isTracker, isStandalone, isPFcand, looseId, mediumId, tightId, pfRelIso04_all, dxy, dz, nStations), standalone-track kinematics (0 if none: `standalonePt == 0`) | `CSCLCTRecoMuonTableProducer` |
 | `MuonCSCChamber` | one row per CSC chamber match (`reco::Muon::matches()`) of each stored muon, in muon order: `muonIdx`, chamber (ME1/1: normally a ring-1 = ME1b and a ring-4 = ME1a row for each crossing, with nearly the same propagated state and edges; `MuonCSCLayer_propInStripPlane` tells which ring's strip plane the track crosses); the track propagated by reco (inner track if any, else standalone; `TrackDetectorAssociator`) on the chamber surface: `x`, `y`, `dXdZ`, `dYdZ` and their errors, `edgeX`, `edgeY` (< 0: inside), `nDigisInRange`, `eta`, `phi` of that point; `nSegmentMatches` | `CSCLCTRecoMuonTableProducer` |
 | `MuonCSCSegment` | one row per CSC segment of a stored muon: source 0 = a valid 4D CSC hit of its standalone track (`outerTrack()->recHits()` order), source 1 = a segment match of one of its CSC chamber matches (`matches()`, `segmentMatches` order) with reco's arbitration `mask`, link `muonCSCChamberIdx`; chamber ids (ring), nHits, chi2, ndof, time, position and direction (chamber frame) with errors | `CSCLCTRecoMuonTableProducer` |
@@ -54,6 +54,11 @@ underscore and the link columns follow the NanoAOD `<target>Idx` convention; cof
 link tables, so they are read as plain collections.
 
 ## Known limitations
+
+- Not stored from the ALCT and CLCT digis: their hit lists (`getHits`, empty when unpacked) and the derived accessors
+  (`getKeyStrip(4)`, `getKeyStrip(8)`, `getFractionalStrip`, `getFractionalSlope`, `getBXData`).
+- A chamber without ALCT or CLCT rows can have no ALCT/CLCT, no readout of that board, or a header that failed the
+  unpacker's checks: the ntuple does not tell these apart.
 
 - A crossed chamber is described two ways: by the edges at the chamber surface (`edgeX < 0 && edgeY < 0`, the odd-layer
   wire plane) and per layer by the propagated state (`MuonCSCLayer_propInStrips`, `propInStripPlane`, `propWg`); they do

@@ -1,14 +1,16 @@
-# NanoAOD-format ntuple of CSC LCTs, reco muons, trigger information and (MC) simulation truth (GemCscNano_cff), from
+# NanoAOD-format ntuple of CSC LCTs, ALCTs, CLCTs, reco muons, trigger information and (MC) simulation truth, from
 # Run-3 inputs that carry both RAW and reco: the ZMu skim (/Muon0/Run2026D-ZMu-PromptReco-v1/RAW-RECO), AOD with its RAW
 # parent given as secondary files (not yet run), or MC GEN-SIM-RECO with its GEN-SIM-(DIGI-)RAW parent as secondary
 # files.
 #
-#   cmsRun runGemCscNano_cfg.py inputFiles=<file> globalTag=<GT of the input> era=<Run-3 era, e.g. Run3_2026> [mc=True] \
+#   cmsRun runGemCscNano_cfg.py inputFiles=<file> globalTag=<GT of the input> era=<Run-3 era, e.g. Run3_2026> \
+#       [mc=True] \
 #       [maxEvents=-1] [secondaryInputFiles=<RAW parent>] [outputFile=...] [muonCut=<reco::Muon cut; empty = all>]
 #
 # Events written: a stored muon (muonCut) with pT > 10 GeV in 0.9 < |eta| < 2.4, or in MC a final-state generator muon
-# with pT > 10 GeV in that range (gemCscNanoMuonFilter, gemCscNanoGenFilter of the cff). LCTs: unpacked from
-# rawDataCollector here (no data tier stores them; MC RAW is packed from the emulator's MPC-sorted LCTs), every digi.
+# with pT > 10 GeV in that range (gemCscNanoMuonFilter, gemCscNanoGenFilter of the cff). LCTs, ALCTs and CLCTs:
+# unpacked from rawDataCollector here (no data tier stores them; MC RAW is packed from the DIGI step's emulator: its
+# MPC-sorted LCTs and its ALCTs and CLCTs), every digi.
 # Only Run-3 eras are accepted.
 #
 # Emulator LCTs from data: append to a copy of L1Trigger/CSCTriggerPrimitives/test/runCSCTriggerPrimitiveProducer_cfg.py
@@ -17,13 +19,16 @@
 #   process.GlobalTag = GlobalTag(process.GlobalTag, "<GT of the runs>", "")
 #   process.load("L1Trigger.GemCscNano.GemCscNano_cff")
 #   process.cscLCTRecoMuonTable.lcts = "cscTriggerPrimitiveDigis"  # TMB level (L1TdeCSCTPG uses :MPCSORTED)
+#   process.cscLCTRecoMuonTable.alcts = "cscTriggerPrimitiveDigis"  # or keep the unpacked ALCTs and CLCTs: the
+#   process.cscLCTRecoMuonTable.clcts = "cscTriggerPrimitiveDigis"  # table docs name the collection used
 #   from L1Trigger.GemCscNano.GemCscNano_cff import setGemCscNanoSelection
 #   setGemCscNanoSelection(process)  # after any change of muonCut or gemCscNanoSelection
 #   process.gemCscNanoMuonPath = cms.Path(process.gemCscNanoMuonFilter)  # the event preselection
 #   process.out = <the NanoAODOutputModule of this file; its l1bits keep statement then names the process L1CSCTPG>
 #   process.e = cms.EndPath(process.out, process.gemCscNanoTask)
 #   process.schedule.extend([process.gemCscNanoMuonPath, process.e])
-# (not run since the event preselection was added, 2026-11-02)
+# (run on 50 events at 9a43f6e2322, before the ALCT and CLCT tables; emulator digis differ from unpacked ones in
+# bx and fullBX, see the column docs)
 # (the base cfg's era is Run3; the HLT objects and bits are read from the process "HLT", the cff default);
 # run it with unpack=True l1=True run3=True runCCLUTOTMB=True runME11ILT=True useGEMAlignment=True
 # saveEdmOutput=False [use6BitGEMCSCBendingAngle=True] inputFiles=<file>: without run3=True the cfg emulates Run-2

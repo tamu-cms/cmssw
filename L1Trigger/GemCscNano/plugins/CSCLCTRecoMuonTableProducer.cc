@@ -311,10 +311,20 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       "collision pattern type, getCollisionB");
   addColumn<int16_t>(
       *alctTable, "wg", alcts, [](const ALCTRow& r) { return r.digi->getKeyWG(); }, "key wire group, 0-based");
-  addColumn<int16_t>(*alctTable, "bx", alcts, [](const ALCTRow& r) { return r.digi->getBX(); }, "BX, getBX");
+  addColumn<int16_t>(
+      *alctTable,
+      "bx",
+      alcts,
+      [](const ALCTRow& r) { return r.digi->getBX(); },
+      "BX, getBX: unpacked, the ALCT readout time bin (central 3); emulator digis: the emulator BX minus 5");
   addColumn<int16_t>(
       *alctTable, "trknmb", alcts, [](const ALCTRow& r) { return r.digi->getTrknmb(); }, "track number (1 or 2)");
-  addColumn<int16_t>(*alctTable, "fullBX", alcts, [](const ALCTRow& r) { return r.digi->getFullBX(); }, "getFullBX");
+  addColumn<int16_t>(
+      *alctTable,
+      "fullBX",
+      alcts,
+      [](const ALCTRow& r) { return r.digi->getFullBX(); },
+      "getFullBX: unpacked data, the BXN of the ALCT header; unpacked MC, the BXN count the packer set");
   addColumn<bool>(
       *alctTable, "run3", alcts, [](const ALCTRow& r) { return r.digi->isRun3(); }, "Run-3 version of the digi");
   addColumn<int16_t>(
@@ -333,7 +343,11 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       *clctTable, "valid", clcts, [](const CLCTRow& r) { return r.digi->isValid(); }, "CSCCLCTDigi::isValid");
   addColumn<int16_t>(*clctTable, "quality", clcts, [](const CLCTRow& r) { return r.digi->getQuality(); }, "quality");
   addColumn<int16_t>(
-      *clctTable, "pattern", clcts, [](const CLCTRow& r) { return r.digi->getPattern(); }, "Run-2 pattern, getPattern");
+      *clctTable,
+      "pattern",
+      clcts,
+      [](const CLCTRow& r) { return r.digi->getPattern(); },
+      "Run-2 pattern, getPattern (Run-3 header formats: looked up by the unpacker from bend and slope)");
   addColumn<int16_t>(
       *clctTable,
       "run3Pattern",
@@ -372,10 +386,21 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       clcts,
       [](const CLCTRow& r) { return r.digi->getEighthStripBit(); },
       "1/8-strip bit (Run 3)");
-  addColumn<int16_t>(*clctTable, "bx", clcts, [](const CLCTRow& r) { return r.digi->getBX(); }, "BX, getBX");
+  addColumn<int16_t>(
+      *clctTable,
+      "bx",
+      clcts,
+      [](const CLCTRow& r) { return r.digi->getBX(); },
+      "BX, getBX: unpacked data, the 2 lowest bits of the BXN at pre-trigger (a bunch phase, not a time); unpacked "
+      "MC, the emulator BX modulo 4; emulator digis: the emulator BX (central 7)");
   addColumn<int16_t>(
       *clctTable, "trknmb", clcts, [](const CLCTRow& r) { return r.digi->getTrknmb(); }, "track number (1 or 2)");
-  addColumn<int16_t>(*clctTable, "fullBX", clcts, [](const CLCTRow& r) { return r.digi->getFullBX(); }, "getFullBX");
+  addColumn<int16_t>(
+      *clctTable,
+      "fullBX",
+      clcts,
+      [](const CLCTRow& r) { return r.digi->getFullBX(); },
+      "getFullBX: unpacked data, the BXN at pre-trigger; 0 for MC and emulator digis");
   addColumn<int16_t>(
       *clctTable,
       "compCode",
