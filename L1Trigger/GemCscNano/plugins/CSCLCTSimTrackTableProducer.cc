@@ -107,6 +107,46 @@ namespace {
     return csclct::toLCTSpace(geometry, chamberId, ch->toGlobal(LocalPoint(ax + bx * z3, ay + by * z3, z3)));
   }
 
+  // Least-squares straight line x(z) = ax + bx z, y(z) = ay + by z through the simhit positions, chamber frame of ch;
+  // false with fewer than two layers.
+  bool fitLine(const CSCGeometry& geometry,
+               const CSCChamber& ch,
+               const std::vector<const PSimHit*>& hits,
+               double (&a)[4]) {
+    double n = 0, sz = 0, szz = 0, sx = 0, sxz = 0, sy = 0, syz = 0;
+    for (const PSimHit* h : hits) {
+      const CSCLayer* L = geometry.layer(CSCDetId(h->detUnitId()));
+      if (L == nullptr)
+        continue;
+      const LocalPoint p = ch.toLocal(L->toGlobal(h->localPosition()));
+      n += 1;
+      sz += p.z();
+      szz += p.z() * p.z();
+      sx += p.x();
+      sxz += p.x() * p.z();
+      sy += p.y();
+      syz += p.y() * p.z();
+    }
+    const double det = n * szz - sz * sz;
+    if (n < 2 || std::abs(det) < 1e-6)
+      return false;
+    const double bx = (n * sxz - sz * sx) / det, by = (n * syz - sz * sy) / det;
+    a[0] = (sx - bx * sz) / n;
+    a[1] = bx;
+    a[2] = (sy - by * sz) / n;
+    a[3] = by;
+    return true;
+  }
+
+  // One layer of one (SimTrack, CSC chamber with ring where it has simhits of its own particle type).
+  struct SimLayerRow {
+    int16_t simTrackIdx;
+    CSCDetId id;
+    int16_t nSimHits = 0;          // own-type simhits on this layer
+    const PSimHit* hit = nullptr;  // the first of them (collection order)
+    csclct::LayerPoint simHit, entry, exit, line, lineLo, lineHi;
+  };
+
   struct LinkRow {
     int16_t lctIdx;
     int16_t simTrackIdx;
@@ -155,6 +195,7 @@ CSCLCTSimTrackTableProducer::CSCLCTSimTrackTableProducer(const edm::ParameterSet
   produces<nanoaod::FlatTable>("simTrack");
   produces<nanoaod::FlatTable>("lctSimTrackMatch");
   produces<nanoaod::FlatTable>("lctExtension");
+  produces<nanoaod::FlatTable>("simTrackCSCLayer");
 }
 
 void CSCLCTSimTrackTableProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
@@ -221,6 +262,217 @@ void CSCLCTSimTrackTableProducer::produce(edm::Event& event, const edm::EventSet
     const SimTrack& t = simTracks[i];
     return t.noVertex() ? -1 : simVertices.at(t.vertIndex()).parentIndex();
   };
+
+  // SimTrackCSCLayer: per stored SimTrack (row order), every CSC chamber (with ring) where it has simhits of its own
+  // particle type (CSCDetId order), layers 1-6.
+  std::vector<SimLayerRow> simLayers;
+  for (size_t s = 0; s < rows.size(); ++s) {
+    const SimTrack& t = simTracks[rows[s]];
+    const auto trackHits = hitsOfTrack.find(t.trackId());
+    if (trackHits == hitsOfTrack.end())
+      continue;
+    std::map<CSCDetId, std::vector<const PSimHit*>> hitsOfChamber;  // own ring (ME1a: 4)
+    for (const PSimHit* h : trackHits->second)
+      if (h->particleType() == t.type())
+        hitsOfChamber[CSCDetId(h->detUnitId()).chamberId()].push_back(h);
+    for (const auto& [chamberId, hits] : hitsOfChamber) {
+      const CSCChamber* ch = geometry.chamber(chamberId);
+      if (ch == nullptr)
+        throw cms::Exception("LogicError") << chamberId << " is not in the CSC geometry";
+      double a[4];
+      const bool hasLine = fitLine(geometry, *ch, hits, a);
+      for (int l = 1; l <= CSCConstants::NUM_LAYERS; ++l) {
+        const CSCLayer* L = ch->layer(l);
+        if (L == nullptr)
+          throw cms::Exception("LogicError") << "layer " << l << " of " << chamberId << " is not in the CSC geometry";
+        SimLayerRow row{int16_t(s), L->id(), 0, nullptr, {}, {}, {}, {}, {}, {}};
+        for (const PSimHit* h : hits)
+          if (CSCDetId(h->detUnitId()).layer() == l) {
+            if (row.hit == nullptr) {
+              row.hit = h;
+              row.simHit = csclct::layerPoint(*L, h->localPosition());
+              row.entry = csclct::layerPoint(*L, h->entryPoint());
+              row.exit = csclct::layerPoint(*L, h->exitPoint());
+            }
+            ++row.nSimHits;
+          }
+        if (hasLine) {
+          const float halfGap = csclct::halfGasGap(*L);
+          const auto at = [&](float dz) {
+            const double z = ch->toLocal(L->toGlobal(LocalPoint(0.f, 0.f, dz))).z();
+            return csclct::layerPoint(*L, L->toLocal(ch->toGlobal(LocalPoint(a[0] + a[1] * z, a[2] + a[3] * z, z))));
+          };
+          row.line = at(0.f);
+          row.lineLo = at(-halfGap);
+          row.lineHi = at(halfGap);
+        }
+        simLayers.push_back(row);
+      }
+    }
+  }
+  auto simLayerTable = std::make_unique<nanoaod::FlatTable>(simLayers.size(), "SimTrackCSCLayer", false);
+  simLayerTable->setDoc(
+      "MC: per stored SimTrack (row order), every CSC chamber (with ring) where it has simhits of its own particle "
+      "type (CSCDetId order), layers 1-6. Two sources of a position on the layer: the first own-type simhit on it "
+      "(simHit*: its entry-exit midpoint, entry and exit points) and the least-squares straight line through the "
+      "own-type simhit midpoints of the chamber, chamber frame (line*; none with fewer than two layers). Per point as "
+      "in MuonCSCLayer: x, y in the layer frame, fs = CSCLayerGeometry::strip (clamped to [0, N]), wg 0-based; "
+      "*Lo / *Hi at the gas-gap surfaces, layer-frame z = -g/2 and +g/2");
+  addColumn<int16_t>(
+      *simLayerTable, "simTrackIdx", simLayers, [](const SimLayerRow& r) { return r.simTrackIdx; }, "row in SimTrack");
+  addColumn<int16_t>(
+      *simLayerTable, "endcap", simLayers, [](const SimLayerRow& r) { return r.id.zendcap(); }, "+1 or -1");
+  addColumn<int16_t>(
+      *simLayerTable, "station", simLayers, [](const SimLayerRow& r) { return r.id.station(); }, "station");
+  addColumn<int16_t>(
+      *simLayerTable,
+      "ring",
+      simLayers,
+      [](const SimLayerRow& r) { return r.id.ring(); },
+      "ring of the simhits (ME1/1: 1 = ME1b, 4 = ME1a)");
+  addColumn<int16_t>(
+      *simLayerTable, "chamber", simLayers, [](const SimLayerRow& r) { return r.id.chamber(); }, "chamber");
+  addColumn<int16_t>(
+      *simLayerTable, "layer", simLayers, [](const SimLayerRow& r) { return r.id.layer(); }, "layer, 1-6");
+  addColumn<int16_t>(
+      *simLayerTable,
+      "nSimHits",
+      simLayers,
+      [](const SimLayerRow& r) { return r.nSimHits; },
+      "simhits of the track's own particle type on this layer");
+  addColumn<bool>(
+      *simLayerTable,
+      "hasSimHit",
+      simLayers,
+      [](const SimLayerRow& r) { return r.simHit.has; },
+      "an own-type simhit lies on this layer (the first is described)");
+  addColumn<float>(
+      *simLayerTable,
+      "simHitX",
+      simLayers,
+      [](const SimLayerRow& r) { return r.simHit.x; },
+      "simhit midpoint (PSimHit::localPosition) x, layer frame, cm");
+  addColumn<float>(
+      *simLayerTable,
+      "simHitY",
+      simLayers,
+      [](const SimLayerRow& r) { return r.simHit.y; },
+      "simhit midpoint y, layer frame, cm");
+  addColumn<float>(
+      *simLayerTable, "simHitFs", simLayers, [](const SimLayerRow& r) { return r.simHit.fs; }, "fs of the midpoint");
+  addColumn<bool>(
+      *simLayerTable,
+      "simHitInStrips",
+      simLayers,
+      [](const SimLayerRow& r) { return r.simHit.inStrips; },
+      "1e-6 < simHitFs < N - 1e-6 (not clamped)");
+  addColumn<bool>(
+      *simLayerTable,
+      "simHitInStripPlane",
+      simLayers,
+      [](const SimLayerRow& r) { return r.simHit.inStripPlane; },
+      "simHitY inside the strip plane");
+  addColumn<int16_t>(
+      *simLayerTable,
+      "simHitWg",
+      simLayers,
+      [](const SimLayerRow& r) { return r.simHit.wg; },
+      "wire group of the nearest wire at the midpoint, 0-based; -1 outside or dead");
+  addColumn<float>(
+      *simLayerTable,
+      "simHitFsEntry",
+      simLayers,
+      [](const SimLayerRow& r) { return r.entry.fs; },
+      "fs of the simhit entry point (clamped like fs)");
+  addColumn<int16_t>(
+      *simLayerTable, "simHitWgEntry", simLayers, [](const SimLayerRow& r) { return r.entry.wg; }, "wire group there");
+  addColumn<float>(
+      *simLayerTable,
+      "simHitFsExit",
+      simLayers,
+      [](const SimLayerRow& r) { return r.exit.fs; },
+      "fs of the simhit exit point (clamped like fs)");
+  addColumn<int16_t>(
+      *simLayerTable, "simHitWgExit", simLayers, [](const SimLayerRow& r) { return r.exit.wg; }, "wire group there");
+  addColumn<float>(
+      *simLayerTable,
+      "simHitTof",
+      simLayers,
+      [](const SimLayerRow& r) { return r.hit != nullptr ? r.hit->timeOfFlight() : 0.f; },
+      "simhit time of flight, ns");
+  addColumn<float>(
+      *simLayerTable,
+      "simHitEnergyLoss",
+      simLayers,
+      [](const SimLayerRow& r) { return r.hit != nullptr ? r.hit->energyLoss() : 0.f; },
+      "simhit energy loss, GeV");
+  addColumn<float>(
+      *simLayerTable,
+      "simHitPabs",
+      simLayers,
+      [](const SimLayerRow& r) { return r.hit != nullptr ? r.hit->pabs() : 0.f; },
+      "momentum at the simhit entry, GeV");
+  addColumn<int16_t>(
+      *simLayerTable,
+      "simHitProcessType",
+      simLayers,
+      [](const SimLayerRow& r) { return r.hit != nullptr ? int(r.hit->processType()) : 0; },
+      "Geant4 process type of the simhit");
+  addColumn<bool>(
+      *simLayerTable,
+      "hasLine",
+      simLayers,
+      [](const SimLayerRow& r) { return r.line.has; },
+      "the least-squares line exists (own-type simhits on at least two layers)");
+  addColumn<float>(
+      *simLayerTable,
+      "lineX",
+      simLayers,
+      [](const SimLayerRow& r) { return r.line.x; },
+      "x where the line crosses the layer plane, layer frame, cm");
+  addColumn<float>(
+      *simLayerTable,
+      "lineY",
+      simLayers,
+      [](const SimLayerRow& r) { return r.line.y; },
+      "y where the line crosses the layer plane, layer frame, cm");
+  addColumn<float>(
+      *simLayerTable, "lineFs", simLayers, [](const SimLayerRow& r) { return r.line.fs; }, "fs at that point");
+  addColumn<bool>(
+      *simLayerTable,
+      "lineInStrips",
+      simLayers,
+      [](const SimLayerRow& r) { return r.line.inStrips; },
+      "1e-6 < lineFs < N - 1e-6 (not clamped)");
+  addColumn<bool>(
+      *simLayerTable,
+      "lineInStripPlane",
+      simLayers,
+      [](const SimLayerRow& r) { return r.line.inStripPlane; },
+      "lineY inside the strip plane");
+  addColumn<int16_t>(
+      *simLayerTable,
+      "lineWg",
+      simLayers,
+      [](const SimLayerRow& r) { return r.line.wg; },
+      "wire group of the nearest wire at that point, 0-based; -1 outside or dead");
+  addColumn<float>(
+      *simLayerTable,
+      "lineFsLo",
+      simLayers,
+      [](const SimLayerRow& r) { return r.lineLo.fs; },
+      "fs where the line crosses the gas-gap surface at layer-frame z = -g/2 (clamped like fs)");
+  addColumn<int16_t>(
+      *simLayerTable, "lineWgLo", simLayers, [](const SimLayerRow& r) { return r.lineLo.wg; }, "wire group there");
+  addColumn<float>(
+      *simLayerTable,
+      "lineFsHi",
+      simLayers,
+      [](const SimLayerRow& r) { return r.lineHi.fs; },
+      "fs where the line crosses the gas-gap surface at layer-frame z = +g/2 (clamped like fs)");
+  addColumn<int16_t>(
+      *simLayerTable, "lineWgHi", simLayers, [](const SimLayerRow& r) { return r.lineHi.wg; }, "wire group there");
+  event.put(std::move(simLayerTable), "simTrackCSCLayer");
 
   // LCT rows per LCT chamber, from the LCT table.
   const auto column = [&lctTable](const char* name) {

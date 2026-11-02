@@ -14,6 +14,7 @@
 
 #include <optional>
 
+class CSCChamber;
 class CSCGeometry;
 class CSCLayer;
 class CSCRecHit2D;
@@ -59,6 +60,29 @@ namespace csclct {
 
   // Segment (chamber frame, origin at chamber z = 0) projected onto the plane of layer 3.
   KeyLayerPosition fromSegmentProjection(const CSCGeometry& geometry, const CSCSegment& segment);
+
+  // A point on one CSC layer in the trigger's coordinates, unrounded:
+  //   x, y   in the layer frame (cm);
+  //   fs     CSCLayerGeometry::strip(lp): strip k covers [k-1, k), with the layer's stagger; CMSSW clamps it to
+  //          [0, N] (OffsetRadialStripTopology), so inStrips = 1e-6 < fs < N - 1e-6 tells a real value;
+  //   inStripPlane  y inside the layer's strip-plane y range (CSCLayerGeometry::yLimitsOfStripPlane);
+  //   wg     the nearest wire's group, 0-based (CSCLayerGeometry::wireGroup is 1-based and 0 outside or dead: -1).
+  struct LayerPoint {
+    bool has = false;
+    float x = 0.f, y = 0.f;
+    float fs = -1.f;
+    bool inStrips = false;
+    bool inStripPlane = false;
+    int wg = -1;
+  };
+  // lp in the frame of layer L (only x and y are used).
+  LayerPoint layerPoint(const CSCLayer& L, const LocalPoint& lp);
+  // Where a straight line (frame of chamber ch: p0 + t d) crosses the plane z = dz of layer L of ch (layer frame;
+  // dz = 0 is the layer plane, the middle of its gas gap); has = false if |d.z| < 1e-6. At dz = 0 on layer 3 this is
+  // lineAtKeyLayer followed by toLCTSpace, operation for operation.
+  LayerPoint lineAtLayer(const CSCChamber& ch, const CSCLayer& L, const LocalPoint& p0, const LocalVector& d, float dz);
+  // Half the gas gap: CMSSW builds a CSC layer with the gas gap as its thickness (CSCGeometryBuilder.cc:204, 268).
+  float halfGasGap(const CSCLayer& L);
 
   // LCT - key, LCT units. distance = |dES| / 4 + |dWG| orders the matches.
   struct Residual {

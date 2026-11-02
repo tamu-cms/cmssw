@@ -15,6 +15,7 @@
 #include "CommonTools/Utils/interface/StringCutObjectSelector.h"
 #include "DataFormats/CSCDigi/interface/CSCConstants.h"
 #include "DataFormats/CSCDigi/interface/CSCCorrelatedLCTDigiCollection.h"
+#include "DataFormats/CSCRecHit/interface/CSCRecHit2D.h"
 #include "DataFormats/CSCRecHit/interface/CSCSegment.h"
 #include "DataFormats/MuonDetId/interface/GEMDetId.h"
 #include "DataFormats/MuonDetId/interface/MuonSubdetId.h"
@@ -34,6 +35,7 @@
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ParameterSet/interface/ParameterSetDescription.h"
 #include "FWCore/Utilities/interface/Exception.h"
+#include "Geometry/CSCGeometry/interface/CSCChamber.h"
 #include "Geometry/CSCGeometry/interface/CSCGeometry.h"
 #include "Geometry/CSCGeometry/interface/CSCLayer.h"
 #include "Geometry/GEMGeometry/interface/GEMGeometry.h"
@@ -41,6 +43,8 @@
 #include "L1Trigger/GemCscNano/interface/CSCLCTRecoMuonMatcher.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <set>
@@ -79,6 +83,33 @@ namespace {
     bool hasMatcherSegment = false;     // the matcher's segmentSource gives a segment in this chamber
     bool hasStandaloneSegment = false;  // the standalone track has a CSC segment in this chamber
     bool hasArbitratedSegment = false;  // the arbitrated chamber matches have a segment here (segmentSource matches)
+  };
+
+  // One CSC segment of a stored muon: a hit of its standalone track (source 0) or a segment match of one of its
+  // CSC chamber matches (source 1).
+  struct SegmentRow {
+    int16_t muonIdx;
+    uint8_t source;
+    int16_t chamberIdx;  // MuonCSCChamber row holding the segment match (source 1), -1 for source 0
+    uint32_t mask;       // reco::MuonSegmentMatch::mask (source 1), 0 for source 0
+    const CSCSegment* segment;
+  };
+
+  // One layer of one (muon, CSC chamber with ring, segment or none): the three sources of a position on that layer.
+  struct LayerRow {
+    int16_t muonIdx;
+    int16_t segmentIdx;  // MuonCSCSegment row, -1 if none
+    int16_t chamberIdx;  // MuonCSCChamber row of the same chamber (ring), -1 if none
+    CSCDetId id;         // the layer
+    const CSCRecHit2D* rechit = nullptr;
+    csclct::LayerPoint recHit, line, lineLo, lineHi, prop, propLo, propHi;
+  };
+
+  struct ADCRow {
+    int16_t layerIdx;
+    int16_t strip;
+    int16_t timeBin;
+    float adc;
   };
 
   // One GEM chamber match of a stored muon, with the eta partition, strip and pad where the track crosses it.
@@ -148,6 +179,9 @@ CSCLCTRecoMuonTableProducer::CSCLCTRecoMuonTableProducer(const edm::ParameterSet
   produces<nanoaod::FlatTable>("muonCSCChamber");
   produces<nanoaod::FlatTable>("muonGEMChamber");
   produces<nanoaod::FlatTable>("muonGEMHitMatch");
+  produces<nanoaod::FlatTable>("muonCSCSegment");
+  produces<nanoaod::FlatTable>("muonCSCLayer");
+  produces<nanoaod::FlatTable>("muonCSCRecHitADC");
 }
 
 void CSCLCTRecoMuonTableProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
@@ -579,6 +613,432 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       [](const ChamberRow& r) { return r.hasArbitratedSegment; },
       "a segment with BestInChamberByDR and BelongsToTrackByDR in this chamber (segmentSource matches)");
 
+  // MuonCSCSegment: the CSC segments of the stored muons, in muon order. Per muon, source 0 first: every valid 4D CSC
+  // hit (CSCSegment) of the standalone track, in outerTrack()->recHits() order; then source 1: every segment match of
+  // every CSC chamber match, in matches() then segmentMatches order, whatever its arbitration bits.
+  std::vector<SegmentRow> segments;
+  for (size_t m = 0; m < muons.size(); ++m) {
+    const reco::TrackRef trk = muons[m].outerTrack();
+    if (trk.isNonnull()) {
+      if (!trk.isAvailable() || !trk->recHitsOk())
+        throw cms::Exception("ProductNotFound")
+            << "muon " << m << ": its standalone track or the track's rechits are not in the input";
+      for (auto const* hit : trk->recHits()) {
+        if (!hit->isValid() || hit->dimension() != 4)
+          continue;
+        const DetId id = hit->geographicalId();
+        if (id.det() != DetId::Muon || id.subdetId() != MuonSubdetId::CSC)
+          continue;
+        auto const* seg = dynamic_cast<const CSCSegment*>(hit);
+        if (seg == nullptr)
+          throw cms::Exception("LogicError")
+              << "muon " << m << ": a 4D CSC hit of the standalone track is not a CSCSegment";
+        segments.push_back({int16_t(m), 0, -1, 0u, seg});
+      }
+    }
+    for (size_t r = 0; r < chambers.size(); ++r) {
+      if (chambers[r].muonIdx != int16_t(m))
+        continue;
+      for (const auto& sm : chambers[r].match->segmentMatches) {
+        if (sm.cscSegmentRef.isNull() || !sm.cscSegmentRef.isAvailable())
+          throw cms::Exception("ProductNotFound")
+              << "muon " << m << ": a CSC segment match without its segment in the input (" << chambers[r].id << ")";
+        segments.push_back({int16_t(m), 1, int16_t(r), sm.mask, &*sm.cscSegmentRef});
+      }
+    }
+  }
+  checkIndexRange(segments.size(), "muon CSC segments");
+
+  // MuonCSCLayer: per muon, every CSC chamber (with ring) holding a chamber match or a segment of the muon, the
+  // chamber matches' chambers first (MuonCSCChamber order), then the others in segment order; per chamber, every
+  // segment of the muon there (MuonCSCSegment order), or none; per segment, layers 1-6.
+  std::vector<LayerRow> layers;
+  for (size_t m = 0; m < muons.size(); ++m) {
+    std::vector<CSCDetId> keys;
+    for (const auto& c : chambers)
+      if (c.muonIdx == int16_t(m))
+        keys.push_back(c.id);
+    for (const auto& sr : segments) {
+      const CSCDetId id = sr.segment->cscDetId().chamberId();
+      if (sr.muonIdx == int16_t(m) && std::find(keys.begin(), keys.end(), id) == keys.end())
+        keys.push_back(id);
+    }
+    for (const CSCDetId& key : keys) {
+      int16_t chamberIdx = -1;
+      for (size_t r = 0; r < chambers.size(); ++r)
+        if (chambers[r].muonIdx == int16_t(m) && chambers[r].id == key)
+          chamberIdx = int16_t(r);
+      std::vector<int16_t> segIdx;
+      for (size_t i = 0; i < segments.size(); ++i)
+        if (segments[i].muonIdx == int16_t(m) && segments[i].segment->cscDetId().chamberId() == key)
+          segIdx.push_back(int16_t(i));
+      if (segIdx.empty())
+        segIdx.push_back(-1);
+      const CSCChamber* ch = geometry.chamber(key);
+      if (ch == nullptr)
+        throw cms::Exception("LogicError")
+            << key << " is not in the CSC geometry: the job's geometry differs from the RECO's";
+      const reco::MuonChamberMatch* cm = chamberIdx >= 0 ? chambers[chamberIdx].match : nullptr;
+      for (const int16_t si : segIdx)
+        for (int l = 1; l <= CSCConstants::NUM_LAYERS; ++l) {
+          const CSCLayer* L = ch->layer(l);
+          if (L == nullptr)
+            throw cms::Exception("LogicError") << "layer " << l << " of " << key << " is not in the CSC geometry";
+          const float halfGap = csclct::halfGasGap(*L);
+          LayerRow row{int16_t(m), si, chamberIdx, L->id(), nullptr, {}, {}, {}, {}, {}, {}, {}};
+          if (si >= 0) {
+            const CSCSegment& seg = *segments[si].segment;
+            const LocalPoint p0 = seg.localPosition();
+            const LocalVector d = seg.localDirection();
+            row.line = csclct::lineAtLayer(*ch, *L, p0, d, 0.f);
+            row.lineLo = csclct::lineAtLayer(*ch, *L, p0, d, -halfGap);
+            row.lineHi = csclct::lineAtLayer(*ch, *L, p0, d, halfGap);
+            for (const auto& rh : seg.specificRecHits())
+              if (rh.cscDetId().layer() == l) {
+                row.rechit = &rh;
+                row.recHit = csclct::layerPoint(*L, rh.localPosition());
+                row.recHit.wg = rh.hitWire() - 1;
+                break;
+              }
+          }
+          // the chamber match is reco's track state on the chamber surface (local z = 0); none without a direction
+          if (cm != nullptr && cm->dXdZ != 9999.f) {
+            const LocalPoint p0(cm->x, cm->y, 0.f);
+            const LocalVector d(cm->dXdZ, cm->dYdZ, 1.f);
+            row.prop = csclct::lineAtLayer(*ch, *L, p0, d, 0.f);
+            row.propLo = csclct::lineAtLayer(*ch, *L, p0, d, -halfGap);
+            row.propHi = csclct::lineAtLayer(*ch, *L, p0, d, halfGap);
+          }
+          layers.push_back(row);
+        }
+    }
+  }
+  checkIndexRange(layers.size(), "muon CSC layers");
+  std::vector<ADCRow> adcs;
+  for (size_t i = 0; i < layers.size(); ++i)
+    if (const CSCRecHit2D* rh = layers[i].rechit)
+      for (unsigned int s = 0; s < rh->nStrips(); ++s)
+        for (unsigned int t = 0; t < rh->nTimeBins(); ++t)
+          adcs.push_back({int16_t(i), int16_t(rh->channels(s)), int16_t(t), rh->adcs(s, t)});
+
+  auto segmentTable = std::make_unique<nanoaod::FlatTable>(segments.size(), "MuonCSCSegment", false);
+  segmentTable->setDoc(
+      "CSC segments of the stored muons, in muon order; per muon, source 0 (every valid 4D CSC hit of the standalone "
+      "track, outerTrack()->recHits() order), then source 1 (every segment match of every CSC chamber match, "
+      "matches() then segmentMatches order, whatever its arbitration bits). A segment can appear under both sources");
+  addColumn<int16_t>(*segmentTable, "muonIdx", segments, [](const SegmentRow& r) { return r.muonIdx; }, "row in Muon");
+  addColumn<uint8_t>(
+      *segmentTable,
+      "source",
+      segments,
+      [](const SegmentRow& r) { return r.source; },
+      "0 = a hit of the muon's standalone track, 1 = a segment match of a CSC chamber match");
+  addColumn<int16_t>(
+      *segmentTable,
+      "muonCSCChamberIdx",
+      segments,
+      [](const SegmentRow& r) { return r.chamberIdx; },
+      "row in MuonCSCChamber of the chamber match holding the segment match (source 1); -1 for source 0");
+  addColumn<uint32_t>(
+      *segmentTable,
+      "mask",
+      segments,
+      [](const SegmentRow& r) { return r.mask; },
+      "reco::MuonSegmentMatch::mask, the arbitration bits (e.g. 1<<10 BestInChamberByDR, 1<<18 BelongsToTrackByDR; "
+      "DataFormats/MuonReco/interface/MuonSegmentMatch.h); 0 for source 0");
+  addColumn<int16_t>(
+      *segmentTable,
+      "endcap",
+      segments,
+      [](const SegmentRow& r) { return r.segment->cscDetId().zendcap(); },
+      "+1 or -1");
+  addColumn<int16_t>(
+      *segmentTable,
+      "station",
+      segments,
+      [](const SegmentRow& r) { return r.segment->cscDetId().station(); },
+      "station");
+  addColumn<int16_t>(
+      *segmentTable,
+      "ring",
+      segments,
+      [](const SegmentRow& r) { return r.segment->cscDetId().ring(); },
+      "ring (ME1/1: 1 = ME1b, 4 = ME1a)");
+  addColumn<int16_t>(
+      *segmentTable,
+      "chamber",
+      segments,
+      [](const SegmentRow& r) { return r.segment->cscDetId().chamber(); },
+      "chamber");
+  addColumn<int16_t>(
+      *segmentTable,
+      "nHits",
+      segments,
+      [](const SegmentRow& r) { return r.segment->nRecHits(); },
+      "rechits of the segment (at most one per layer)");
+  addColumn<float>(
+      *segmentTable, "chi2", segments, [](const SegmentRow& r) { return r.segment->chi2(); }, "segment fit chi2");
+  addColumn<int16_t>(
+      *segmentTable,
+      "ndof",
+      segments,
+      [](const SegmentRow& r) { return r.segment->degreesOfFreedom(); },
+      "segment fit degrees of freedom (2 nHits - 4)");
+  addColumn<float>(
+      *segmentTable, "time", segments, [](const SegmentRow& r) { return r.segment->time(); }, "segment time, ns");
+  addColumn<float>(
+      *segmentTable,
+      "x",
+      segments,
+      [](const SegmentRow& r) { return r.segment->localPosition().x(); },
+      "segment position x, chamber frame (localPosition: at chamber z = 0), cm");
+  addColumn<float>(
+      *segmentTable,
+      "y",
+      segments,
+      [](const SegmentRow& r) { return r.segment->localPosition().y(); },
+      "segment position y, chamber frame (localPosition: at chamber z = 0), cm");
+  addColumn<float>(
+      *segmentTable,
+      "xErr",
+      segments,
+      [](const SegmentRow& r) { return std::sqrt(r.segment->localPositionError().xx()); },
+      "error on x, cm");
+  addColumn<float>(
+      *segmentTable,
+      "yErr",
+      segments,
+      [](const SegmentRow& r) { return std::sqrt(r.segment->localPositionError().yy()); },
+      "error on y, cm");
+  addColumn<float>(
+      *segmentTable,
+      "dirX",
+      segments,
+      [](const SegmentRow& r) { return r.segment->localDirection().x(); },
+      "segment direction (unit vector, localDirection), chamber frame, x");
+  addColumn<float>(
+      *segmentTable,
+      "dirY",
+      segments,
+      [](const SegmentRow& r) { return r.segment->localDirection().y(); },
+      "segment direction (unit vector, localDirection), chamber frame, y");
+  addColumn<float>(
+      *segmentTable,
+      "dirZ",
+      segments,
+      [](const SegmentRow& r) { return r.segment->localDirection().z(); },
+      "segment direction (unit vector, localDirection), chamber frame, z");
+  addColumn<float>(
+      *segmentTable,
+      "dXdZErr",
+      segments,
+      [](const SegmentRow& r) { return std::sqrt(r.segment->localDirectionError().xx()); },
+      "error on dx/dz (localDirectionError)");
+  addColumn<float>(
+      *segmentTable,
+      "dYdZErr",
+      segments,
+      [](const SegmentRow& r) { return std::sqrt(r.segment->localDirectionError().yy()); },
+      "error on dy/dz (localDirectionError)");
+
+  auto layerTable = std::make_unique<nanoaod::FlatTable>(layers.size(), "MuonCSCLayer", false);
+  layerTable->setDoc(
+      "Per stored muon, every CSC chamber (with ring) holding a chamber match (MuonCSCChamber) or a segment "
+      "(MuonCSCSegment) of the muon, chamber matches first, then in segment order; per chamber, every segment of the "
+      "muon there, or none; per segment, layers 1-6. Three sources of a position on the layer: the segment's rechit "
+      "on it (recHit*), the segment line at the layer (line*), and reco's propagated state carried along its straight "
+      "line to the layer (prop*; repeated on the rows of every segment of the chamber). Per point: x, y in the layer "
+      "frame; fs = CSCLayerGeometry::strip (strip k covers [k-1, k), with the layer's stagger; CMSSW clamps it to "
+      "[0, N]); wg = wire group, 0-based. *Lo / *Hi: where the line crosses the gas-gap surfaces, layer-frame z = "
+      "-g/2 and +g/2 (g = the layer thickness, which CMSSW sets to the gas gap)");
+  addColumn<int16_t>(*layerTable, "muonIdx", layers, [](const LayerRow& r) { return r.muonIdx; }, "row in Muon");
+  addColumn<int16_t>(
+      *layerTable,
+      "muonCSCSegmentIdx",
+      layers,
+      [](const LayerRow& r) { return r.segmentIdx; },
+      "row in MuonCSCSegment, -1 if none (the muon has a chamber match here but no segment)");
+  addColumn<int16_t>(
+      *layerTable,
+      "muonCSCChamberIdx",
+      layers,
+      [](const LayerRow& r) { return r.chamberIdx; },
+      "row in MuonCSCChamber of this chamber (ring), -1 if none (the muon has a segment here but no chamber match)");
+  addColumn<int16_t>(*layerTable, "endcap", layers, [](const LayerRow& r) { return r.id.zendcap(); }, "+1 or -1");
+  addColumn<int16_t>(*layerTable, "station", layers, [](const LayerRow& r) { return r.id.station(); }, "station");
+  addColumn<int16_t>(
+      *layerTable, "ring", layers, [](const LayerRow& r) { return r.id.ring(); }, "ring (ME1/1: 1 = ME1b, 4 = ME1a)");
+  addColumn<int16_t>(*layerTable, "chamber", layers, [](const LayerRow& r) { return r.id.chamber(); }, "chamber");
+  addColumn<int16_t>(*layerTable, "layer", layers, [](const LayerRow& r) { return r.id.layer(); }, "layer, 1-6");
+  addColumn<bool>(
+      *layerTable,
+      "hasRecHit",
+      layers,
+      [](const LayerRow& r) { return r.recHit.has; },
+      "the segment has a rechit on this layer");
+  addColumn<float>(
+      *layerTable, "recHitX", layers, [](const LayerRow& r) { return r.recHit.x; }, "rechit local x, layer frame, cm");
+  addColumn<float>(
+      *layerTable, "recHitY", layers, [](const LayerRow& r) { return r.recHit.y; }, "rechit local y, layer frame, cm");
+  addColumn<float>(
+      *layerTable, "recHitFs", layers, [](const LayerRow& r) { return r.recHit.fs; }, "fs of the rechit position");
+  addColumn<bool>(
+      *layerTable,
+      "recHitInStrips",
+      layers,
+      [](const LayerRow& r) { return r.recHit.inStrips; },
+      "1e-6 < recHitFs < N - 1e-6 (not clamped)");
+  addColumn<bool>(
+      *layerTable,
+      "recHitInStripPlane",
+      layers,
+      [](const LayerRow& r) { return r.recHit.inStripPlane; },
+      "recHitY inside the strip plane (CSCLayerGeometry::yLimitsOfStripPlane)");
+  addColumn<int16_t>(
+      *layerTable,
+      "recHitWg",
+      layers,
+      [](const LayerRow& r) { return r.recHit.wg; },
+      "the rechit's wire group, hitWire() - 1: the middle of its contiguous wire-group cluster");
+  addColumn<int16_t>(
+      *layerTable,
+      "recHitNWireGroups",
+      layers,
+      [](const LayerRow& r) { return r.rechit != nullptr ? int(r.rechit->nWireGroups()) : 0; },
+      "wire groups of the rechit's cluster, contiguous: recHitWg - n/2 ... recHitWg - n/2 + n - 1 (n/2 rounded down)");
+  addColumn<int16_t>(
+      *layerTable,
+      "recHitNStrips",
+      layers,
+      [](const LayerRow& r) { return r.rechit != nullptr ? int(r.rechit->nStrips()) : 0; },
+      "strips of the rechit (rows of MuonCSCRecHitADC per time bin)");
+  addColumn<float>(
+      *layerTable,
+      "recHitTpeak",
+      layers,
+      [](const LayerRow& r) { return r.rechit != nullptr ? r.rechit->tpeak() : 0.f; },
+      "rechit strip-pulse peak time (tpeak), ns");
+  addColumn<int16_t>(
+      *layerTable,
+      "recHitWireBX",
+      layers,
+      [](const LayerRow& r) { return r.rechit != nullptr ? r.rechit->wgroupsBX() : 0; },
+      "BX of the rechit's middle wire group (wgroupsBX)");
+  addColumn<float>(
+      *layerTable,
+      "recHitXErr",
+      layers,
+      [](const LayerRow& r) { return r.rechit != nullptr ? std::sqrt(r.rechit->localPositionError().xx()) : 0.f; },
+      "rechit error on x, cm");
+  addColumn<float>(
+      *layerTable,
+      "recHitYErr",
+      layers,
+      [](const LayerRow& r) { return r.rechit != nullptr ? std::sqrt(r.rechit->localPositionError().yy()) : 0.f; },
+      "rechit error on y, cm");
+  addColumn<int16_t>(
+      *layerTable,
+      "recHitQuality",
+      layers,
+      [](const LayerRow& r) { return r.rechit != nullptr ? r.rechit->quality() : 0; },
+      "rechit quality (CSCRecHit2D::quality)");
+  addColumn<int16_t>(
+      *layerTable,
+      "recHitBadStrip",
+      layers,
+      [](const LayerRow& r) { return r.rechit != nullptr ? r.rechit->badStrip() : 0; },
+      "rechit bad-strip flag (CSCRecHit2D::badStrip)");
+  addColumn<int16_t>(
+      *layerTable,
+      "recHitBadWireGroup",
+      layers,
+      [](const LayerRow& r) { return r.rechit != nullptr ? r.rechit->badWireGroup() : 0; },
+      "rechit bad-wire-group flag (CSCRecHit2D::badWireGroup)");
+  // the line and the propagated state: the same columns
+  for (const auto& [prefix, what] : std::vector<std::pair<std::string, std::string>>{
+           {"line", "the segment line (localPosition, localDirection, chamber frame)"},
+           {"prop", "reco's propagated state (MuonCSCChamber x, y at chamber z = 0, dXdZ, dYdZ)"}}) {
+    const bool isLine = prefix == "line";
+    auto pt = [isLine](const LayerRow& r) -> const csclct::LayerPoint& { return isLine ? r.line : r.prop; };
+    auto lo = [isLine](const LayerRow& r) -> const csclct::LayerPoint& { return isLine ? r.lineLo : r.propLo; };
+    auto hi = [isLine](const LayerRow& r) -> const csclct::LayerPoint& { return isLine ? r.lineHi : r.propHi; };
+    addColumn<bool>(
+        *layerTable,
+        "has" + std::string(1, char(std::toupper(prefix[0]))) + prefix.substr(1),
+        layers,
+        [pt](const LayerRow& r) { return pt(r).has; },
+        what + " crosses this layer (none: no " + (isLine ? "segment" : "chamber match, or no direction") +
+            " here, or a line parallel to the layer)");
+    addColumn<float>(
+        *layerTable,
+        prefix + "X",
+        layers,
+        [pt](const LayerRow& r) { return pt(r).x; },
+        "x where " + what + " crosses the layer plane, layer frame, cm");
+    addColumn<float>(
+        *layerTable,
+        prefix + "Y",
+        layers,
+        [pt](const LayerRow& r) { return pt(r).y; },
+        "y where " + what + " crosses the layer plane, layer frame, cm");
+    addColumn<float>(
+        *layerTable, prefix + "Fs", layers, [pt](const LayerRow& r) { return pt(r).fs; }, "fs at that point");
+    addColumn<bool>(
+        *layerTable,
+        prefix + "InStrips",
+        layers,
+        [pt](const LayerRow& r) { return pt(r).inStrips; },
+        "1e-6 < " + prefix + "Fs < N - 1e-6 (not clamped)");
+    addColumn<bool>(
+        *layerTable,
+        prefix + "InStripPlane",
+        layers,
+        [pt](const LayerRow& r) { return pt(r).inStripPlane; },
+        prefix + "Y inside the strip plane (CSCLayerGeometry::yLimitsOfStripPlane)");
+    addColumn<int16_t>(
+        *layerTable,
+        prefix + "Wg",
+        layers,
+        [pt](const LayerRow& r) { return pt(r).wg; },
+        "wire group of the nearest wire at that point, 0-based; -1 outside the wires or at a dead wire");
+    addColumn<float>(
+        *layerTable,
+        prefix + "FsLo",
+        layers,
+        [lo](const LayerRow& r) { return lo(r).fs; },
+        "fs where the line crosses the gas-gap surface at layer-frame z = -g/2 (clamped like fs)");
+    addColumn<int16_t>(
+        *layerTable,
+        prefix + "WgLo",
+        layers,
+        [lo](const LayerRow& r) { return lo(r).wg; },
+        "wire group there (the line crosses the contiguous wire groups between WgLo and WgHi)");
+    addColumn<float>(
+        *layerTable,
+        prefix + "FsHi",
+        layers,
+        [hi](const LayerRow& r) { return hi(r).fs; },
+        "fs where the line crosses the gas-gap surface at layer-frame z = +g/2 (clamped like fs)");
+    addColumn<int16_t>(
+        *layerTable, prefix + "WgHi", layers, [hi](const LayerRow& r) { return hi(r).wg; }, "wire group there");
+  }
+
+  auto adcTable = std::make_unique<nanoaod::FlatTable>(adcs.size(), "MuonCSCRecHitADC", false);
+  adcTable->setDoc(
+      "Strip ADC samples of the rechits in MuonCSCLayer (CSCRecHit2D::adcs): one row per (MuonCSCLayer row with a "
+      "rechit, strip of the rechit, time bin)");
+  addColumn<int16_t>(
+      *adcTable, "muonCSCLayerIdx", adcs, [](const ADCRow& r) { return r.layerIdx; }, "row in MuonCSCLayer");
+  addColumn<int16_t>(
+      *adcTable,
+      "strip",
+      adcs,
+      [](const ADCRow& r) { return r.strip; },
+      "strip number (CSCRecHit2D::channels), 1-based");
+  addColumn<int16_t>(
+      *adcTable, "timeBin", adcs, [](const ADCRow& r) { return r.timeBin; }, "time bin of the sample, 0-based");
+  addColumn<float>(*adcTable, "adc", adcs, [](const ADCRow& r) { return r.adc; }, "ADC count (pedestal subtracted)");
+
   // MuonGEMChamber: the GEM chamber matches of the stored muons, in muon order, then in the order of matches()
   const GEMGeometry& gemGeometry = setup.getData(gemGeomToken_);
   std::vector<GEMChamberRow> gemChambers;
@@ -784,6 +1244,9 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
   event.put(std::move(chamberTable), "muonCSCChamber");
   event.put(std::move(gemTable), "muonGEMChamber");
   event.put(std::move(gemHitTable), "muonGEMHitMatch");
+  event.put(std::move(segmentTable), "muonCSCSegment");
+  event.put(std::move(layerTable), "muonCSCLayer");
+  event.put(std::move(adcTable), "muonCSCRecHitADC");
 }
 
 DEFINE_FWK_MODULE(CSCLCTRecoMuonTableProducer);
