@@ -1,8 +1,9 @@
 # NanoAOD-format ntuple of CSC LCTs, reco muons, trigger information and (MC) simulation truth (GemCscNano_cff), from
 # Run-3 inputs that carry both RAW and reco: the ZMu skim (/Muon0/Run2026D-ZMu-PromptReco-v1/RAW-RECO), AOD with its RAW
-# parent given as secondary files, or MC GEN-SIM-RECO with its GEN-SIM-(DIGI-)RAW parent as secondary files.
+# parent given as secondary files (not yet run), or MC GEN-SIM-RECO with its GEN-SIM-(DIGI-)RAW parent as secondary
+# files.
 #
-#   cmsRun runGemCscNano_cfg.py inputFiles=<file> globalTag=<GT of the input> [era=Run3_2026] [mc=True] \
+#   cmsRun runGemCscNano_cfg.py inputFiles=<file> globalTag=<GT of the input> era=<Run-3 era, e.g. Run3_2026> [mc=True] \
 #       [maxEvents=-1] [secondaryInputFiles=<RAW parent>] [outputFile=...] [muonCut=<reco::Muon cut; empty = all>]
 #
 # Events written: a stored muon (muonCut) with pT > 10 GeV in 0.9 < |eta| < 2.4, or in MC a final-state generator muon
@@ -16,9 +17,13 @@
 #   process.GlobalTag = GlobalTag(process.GlobalTag, "<GT of the runs>", "")
 #   process.load("L1Trigger.GemCscNano.GemCscNano_cff")
 #   process.cscLCTRecoMuonTable.lcts = "cscTriggerPrimitiveDigis"  # TMB level (L1TdeCSCTPG uses :MPCSORTED)
+#   from L1Trigger.GemCscNano.GemCscNano_cff import setGemCscNanoSelection
+#   setGemCscNanoSelection(process)  # after any change of muonCut or gemCscNanoSelection
+#   process.gemCscNanoMuonPath = cms.Path(process.gemCscNanoMuonFilter)  # the event preselection
 #   process.out = <the NanoAODOutputModule of this file; its l1bits keep statement then names the process L1CSCTPG>
 #   process.e = cms.EndPath(process.out, process.gemCscNanoTask)
-#   process.schedule.append(process.e)
+#   process.schedule.extend([process.gemCscNanoMuonPath, process.e])
+# (not run since the event preselection was added, 2026-11-02)
 # (the base cfg's era is Run3; the HLT objects and bits are read from the process "HLT", the cff default);
 # run it with unpack=True l1=True run3=True runCCLUTOTMB=True runME11ILT=True useGEMAlignment=True
 # saveEdmOutput=False [use6BitGEMCSCBendingAngle=True] inputFiles=<file>: without run3=True the cfg emulates Run-2
@@ -34,8 +39,8 @@ from L1Trigger.GemCscNano.cscLCTRecoMuonTableProducer_cfi import cscLCTRecoMuonT
 options = VarParsing("analysis")
 options.register("globalTag", "", VarParsing.multiplicity.singleton, VarParsing.varType.string,
                  "global tag of the input (required)")
-options.register("era", "Run3_2026", VarParsing.multiplicity.singleton, VarParsing.varType.string,
-                 "Run-3 era module name in Configuration.Eras, e.g. Run3_2026")
+options.register("era", "", VarParsing.multiplicity.singleton, VarParsing.varType.string,
+                 "Run-3 era of the input, a module name in Configuration.Eras, e.g. Run3_2026 (required)")
 options.register("mc", False, VarParsing.multiplicity.singleton, VarParsing.varType.bool,
                  "simulation: add GenPart, SimTrack and SimTrackCSCLayer, and the generator-muon event selection")
 options.register("muonCut", _defaults.muonCut.value(), VarParsing.multiplicity.singleton, VarParsing.varType.string,
@@ -46,8 +51,9 @@ options.parseArguments()
 
 if not options.globalTag:
     raise RuntimeError("globalTag= is required: use the global tag of the input")
-if not options.era.startswith("Run3"):
-    raise RuntimeError("era=%s: GemCscNano is defined for Run-3 inputs only" % options.era)
+if not options.era.startswith("Run3") or "FastSim" in options.era:
+    raise RuntimeError("era=%s: GemCscNano is defined for Run-3 inputs (full simulation or data) only; era= is required"
+                       % options.era)
 
 era = getattr(importlib.import_module("Configuration.Eras.Era_%s_cff" % options.era), options.era)
 process = cms.Process("GEMCSCNANO", era)
@@ -68,8 +74,8 @@ process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(options.maxEven
 process.load("L1Trigger.GemCscNano.GemCscNano_cff")
 process.load("EventFilter.CSCRawToDigi.cscUnpacker_cfi")
 process.cscLCTRecoMuonTable.muonCut = options.muonCut
-process.gemCscNanoMuonFilter.cut = "%spt > 10 && %s" % (
-    "(%s) && " % options.muonCut if options.muonCut else "", process.gemCscNanoSelection.cscAcceptance.value())
+from L1Trigger.GemCscNano.GemCscNano_cff import setGemCscNanoSelection
+setGemCscNanoSelection(process)
 
 tasks = [process.gemCscNanoTask, cms.Task(process.muonCSCDigis)]
 selectEvents = ["gemCscNanoMuonPath"]

@@ -197,59 +197,56 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
   checkIndexRange(lcts.size(), "LCTs");
   checkIndexRange(muons.size(), "muons");
 
-  using LCTMatch = LCTRow;
   auto lctTable = std::make_unique<nanoaod::FlatTable>(lcts.size(), "LCT", false);
   lctTable->setDoc("CSC LCTs: every digi of " + lctsLabel_ + ", in collection order (detector unit, then digi)");
-  addColumn<int16_t>(*lctTable, "endcap", lcts, [](const LCTMatch& m) { return m.chamber.zendcap(); }, "+1 or -1");
+  addColumn<int16_t>(*lctTable, "endcap", lcts, [](const LCTRow& m) { return m.chamber.zendcap(); }, "+1 or -1");
   addColumn<bool>(
-      *lctTable, "valid", lcts, [](const LCTMatch& m) { return m.lct->isValid(); }, "CSCCorrelatedLCTDigi::isValid");
-  addColumn<int16_t>(*lctTable, "station", lcts, [](const LCTMatch& m) { return m.chamber.station(); }, "station");
-  addColumn<int16_t>(
-      *lctTable, "ring", lcts, [](const LCTMatch& m) { return m.chamber.ring(); }, "ring (ME1/1 LCTs: 1)");
-  addColumn<int16_t>(*lctTable, "chamber", lcts, [](const LCTMatch& m) { return m.chamber.chamber(); }, "chamber");
+      *lctTable, "valid", lcts, [](const LCTRow& m) { return m.lct->isValid(); }, "CSCCorrelatedLCTDigi::isValid");
+  addColumn<int16_t>(*lctTable, "station", lcts, [](const LCTRow& m) { return m.chamber.station(); }, "station");
+  addColumn<int16_t>(*lctTable, "ring", lcts, [](const LCTRow& m) { return m.chamber.ring(); }, "ring (ME1/1 LCTs: 1)");
+  addColumn<int16_t>(*lctTable, "chamber", lcts, [](const LCTRow& m) { return m.chamber.chamber(); }, "chamber");
   addColumn<int16_t>(
       *lctTable,
       "hs",
       lcts,
-      [](const LCTMatch& m) { return m.lct->getStrip(); },
+      [](const LCTRow& m) { return m.lct->getStrip(); },
       "key half-strip, 0-based (ME1/1: ME1b 0-127, ME1a 128-223)");
   addColumn<int16_t>(
-      *lctTable, "es", lcts, [](const LCTMatch& m) { return m.lct->getStrip(8); }, "key eighth-strip, getStrip(8)");
+      *lctTable, "es", lcts, [](const LCTRow& m) { return m.lct->getStrip(8); }, "key eighth-strip, getStrip(8)");
   addColumn<int16_t>(
-      *lctTable, "wg", lcts, [](const LCTMatch& m) { return m.lct->getKeyWG(); }, "key wire group, 0-based");
-  addColumn<int16_t>(*lctTable, "quality", lcts, [](const LCTMatch& m) { return m.lct->getQuality(); }, "quality");
-  addColumn<int16_t>(
-      *lctTable, "pattern", lcts, [](const LCTMatch& m) { return m.lct->getPattern(); }, "Run-2 pattern");
+      *lctTable, "wg", lcts, [](const LCTRow& m) { return m.lct->getKeyWG(); }, "key wire group, 0-based");
+  addColumn<int16_t>(*lctTable, "quality", lcts, [](const LCTRow& m) { return m.lct->getQuality(); }, "quality");
+  addColumn<int16_t>(*lctTable, "pattern", lcts, [](const LCTRow& m) { return m.lct->getPattern(); }, "Run-2 pattern");
   addColumn<int16_t>(
       *lctTable,
       "run3Pattern",
       lcts,
-      [](const LCTMatch& m) { return m.lct->getRun3Pattern(); },
+      [](const LCTRow& m) { return m.lct->getRun3Pattern(); },
       "Run-3 pattern (0 for Run3-b unpacked data)");
   addColumn<int16_t>(
-      *lctTable, "slope", lcts, [](const LCTMatch& m) { return m.lct->getSlope(); }, "slope, getSlope() (4 bits)");
+      *lctTable, "slope", lcts, [](const LCTRow& m) { return m.lct->getSlope(); }, "slope, getSlope() (4 bits)");
   addColumn<int16_t>(
       *lctTable,
       "slope6",
       lcts,
-      [](const LCTMatch& m) { return m.lct->getSlopeEx(6); },
+      [](const LCTRow& m) { return m.lct->getSlopeEx(6); },
       "slope at 6-bit resolution, getSlopeEx(6)");
-  addColumn<int16_t>(*lctTable, "bend", lcts, [](const LCTMatch& m) { return m.lct->getBend(); }, "bend (L/R)");
+  addColumn<int16_t>(*lctTable, "bend", lcts, [](const LCTRow& m) { return m.lct->getBend(); }, "bend (L/R)");
   addColumn<int16_t>(
-      *lctTable, "bx", lcts, [](const LCTMatch& m) { return m.lct->getBX(); }, "BX (1 bit in unpacked data)");
+      *lctTable, "bx", lcts, [](const LCTRow& m) { return m.lct->getBX(); }, "BX (1 bit in unpacked data)");
   addColumn<int16_t>(
-      *lctTable, "trknmb", lcts, [](const LCTMatch& m) { return m.lct->getTrknmb(); }, "track number (1 or 2)");
+      *lctTable, "trknmb", lcts, [](const LCTRow& m) { return m.lct->getTrknmb(); }, "track number (1 or 2)");
   addColumn<int16_t>(
       *lctTable,
       "type",
       lcts,
-      [](const LCTMatch& m) { return m.lct->getType(); },
+      [](const LCTRow& m) { return m.lct->getType(); },
       "LCT type (CSCCorrelatedLCTDigi::Type; emulator only)");
   addColumn<int16_t>(
       *lctTable,
       "gemLayer",
       lcts,
-      [](const LCTMatch& m) { return m.lct->getGemLayerUsedForSlopeComputation(); },
+      [](const LCTRow& m) { return m.lct->getGemLayerUsedForSlopeComputation(); },
       "GEM layer used for the slope: emulator 1, 2, 0 = none; Run3-b unpacked data the raw 1-bit field");
 
   // Muon rows are the selected muons, so a row index is the muon's index in the selected (muonCut) collection.
@@ -863,8 +860,9 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
 
   auto adcTable = std::make_unique<nanoaod::FlatTable>(adcs.size(), "MuonCSCRecHitADC", false);
   adcTable->setDoc(
-      "Strip ADC samples of the rechits in MuonCSCLayer (CSCRecHit2D::adcs): one row per (MuonCSCLayer row with a "
-      "rechit, strip of the rechit, time bin)");
+      "Strip ADC samples of the rechits in MuonCSCLayer (CSCRecHit2D::adcs: 4 samples per strip around the peak time "
+      "bin of the cluster's central strip, CSCHitFromStripOnly): one row per (MuonCSCLayer row with a "
+      "rechit, strip of the rechit, sample)");
   addColumn<int16_t>(
       *adcTable, "muonCSCLayerIdx", adcs, [](const ADCRow& r) { return r.layerIdx; }, "row in MuonCSCLayer");
   addColumn<int16_t>(
@@ -874,8 +872,20 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       [](const ADCRow& r) { return r.strip; },
       "strip number (CSCRecHit2D::channels), 1-based");
   addColumn<int16_t>(
-      *adcTable, "timeBin", adcs, [](const ADCRow& r) { return r.timeBin; }, "time bin of the sample, 0-based");
-  addColumn<float>(*adcTable, "adc", adcs, [](const ADCRow& r) { return r.adc; }, "ADC count (pedestal subtracted)");
+      *adcTable,
+      "timeBin",
+      adcs,
+      [](const ADCRow& r) { return r.timeBin; },
+      "sample 0-3 of the rechit's window: SCA time bins tmax-1 ... tmax+2 of the cluster's central strip (tmax is not "
+      "stored); reco puts 0.1 in a sample it does not fill (beyond time bin 7, or every sample if tmax is outside "
+      "3-6)");
+  addColumn<float>(
+      *adcTable,
+      "adc",
+      adcs,
+      [](const ADCRow& r) { return r.adc; },
+      "ADC count, pedestal-subtracted and gain-corrected; a strip shared with a neighbouring cluster's maximum carries "
+      "only this cluster's share");
 
   // MuonGEMChamber: the GEM chamber matches of the stored muons, in muon order, then in the order of matches()
   const GEMGeometry& gemGeometry = setup.getData(gemGeomToken_);
@@ -895,7 +905,7 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
       row.eta = gp.eta();
       row.phi = gp.phi();
       // the eta partitions lie off the chamber surface: follow the straight line through that state to each
-      // partition's plane (as MuonCSCChamber does to layer 3); no crossing if reco gives no direction (dXdZ = 9999,
+      // partition's plane; no crossing if reco gives no direction (dXdZ = 9999,
       // the local direction has no z component)
       if (row.id.layer() > 0 && cm.dXdZ != 9999.f) {
         const GlobalVector dir = det->toGlobal(LocalVector(cm.dXdZ, cm.dYdZ, 1.f));

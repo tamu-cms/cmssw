@@ -2,7 +2,7 @@
 # Events: those with a stored muon (cscLCTRecoMuonTable.muonCut) with pT > 10 GeV and 0.9 < |eta| < 2.4, or (MC) a
 # final-state generator muon with pT > 10 GeV and 0.9 < |eta| < 2.4 (gemCscNanoMuonFilter, gemCscNanoGenFilter; the
 # user's definition of 2026-11-02). Per event: every LCT; the reco muons passing muonCut (default pT > 10 GeV and the
-# medium or tight cut-based ID). LCT matching and tag-and-probe selections are applied when the ntuple is analysed.
+# medium or tight cut-based ID). No LCT matching and no tag-and-probe selection is applied.
 #   LCT, Muon, MuonCSCChamber,          cscLCTRecoMuonTable (CSCLCTRecoMuonTableProducer)
 #   MuonCSCSegment, MuonCSCLayer,
 #   MuonCSCRecHitADC, MuonGEMChamber,
@@ -40,19 +40,27 @@ cscLCTRecoMuonTable = cscLCTRecoMuonTableProducer.clone()
 # cfg reads it from the process after process.load (importing this cff before cms.Process(name, era) exists would
 # skip the era modifiers of every module it imports).
 gemCscNanoSelection = cms.PSet(cscAcceptance=cms.string("abs(eta) > 0.9 && abs(eta) < 2.4"))
-cscAcceptance = gemCscNanoSelection.cscAcceptance.value()
-gemCscNanoMuonFilter = cms.EDFilter(
-    "MuonSelector",
-    src=cms.InputTag("muons"),
-    cut=cms.string("(%s) && pt > 10 && %s" % (cscLCTRecoMuonTable.muonCut.value(), cscAcceptance)),
-    filter=cms.bool(True),
-)
-gemCscNanoGenFilter = cms.EDFilter(
-    "GenParticleSelector",
-    src=cms.InputTag("genParticles"),
-    cut=cms.string("abs(pdgId) == 13 && status == 1 && pt > 10 && %s" % cscAcceptance),
-    filter=cms.bool(True),
-)
+
+
+def gemCscNanoSelectionCuts(muonCut, cscAcceptance):
+    """The cuts of gemCscNanoMuonFilter and gemCscNanoGenFilter for a muonCut (empty: all muons) and an acceptance."""
+    return ("%spt > 10 && %s" % ("(%s) && " % muonCut if muonCut else "", cscAcceptance),
+            "abs(pdgId) == 13 && status == 1 && pt > 10 && %s" % cscAcceptance)
+
+
+def setGemCscNanoSelection(process):
+    """Set both filter cuts from process.cscLCTRecoMuonTable.muonCut and process.gemCscNanoSelection: call it after
+    changing either, or the event preselection keeps the default cuts."""
+    process.gemCscNanoMuonFilter.cut, process.gemCscNanoGenFilter.cut = gemCscNanoSelectionCuts(
+        process.cscLCTRecoMuonTable.muonCut.value(), process.gemCscNanoSelection.cscAcceptance.value())
+
+
+_muonCut, _genCut = gemCscNanoSelectionCuts(cscLCTRecoMuonTable.muonCut.value(),
+                                            gemCscNanoSelection.cscAcceptance.value())
+gemCscNanoMuonFilter = cms.EDFilter("MuonSelector", src=cms.InputTag("muons"), cut=cms.string(_muonCut),
+                                    filter=cms.bool(True))
+gemCscNanoGenFilter = cms.EDFilter("GenParticleSelector", src=cms.InputTag("genParticles"), cut=cms.string(_genCut),
+                                   filter=cms.bool(True))
 
 # As miniAOD makes slimmedPatTrigger (switchOnTriggerStandAlone, packed path names), then the central TrigObj table.
 patTrigger = _patTrigger.clone(onlyStandAlone=True, packTriggerPathNames=cms.bool(True))

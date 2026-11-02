@@ -61,7 +61,7 @@ namespace {
   }
 
   // Least-squares straight line x(z) = ax + bx z, y(z) = ay + by z through the simhit positions, chamber frame of ch;
-  // false with fewer than two layers.
+  // false with fewer than two simhits or without two different z (normally: simhits on fewer than two layers).
   bool fitLine(const CSCGeometry& geometry,
                const CSCChamber& ch,
                const std::vector<const PSimHit*>& hits,
@@ -256,7 +256,8 @@ void CSCLCTSimTrackTableProducer::produce(edm::Event& event, const edm::EventSet
       "MC: per stored SimTrack (row order), every CSC chamber (with ring) where it has simhits of its own particle "
       "type (CSCDetId order), layers 1-6. Two sources of a position on the layer: the first own-type simhit on it "
       "(simHit*: its entry-exit midpoint, entry and exit points) and the least-squares straight line through the "
-      "own-type simhit midpoints of the chamber, chamber frame (line*; none with fewer than two layers). Per point as "
+      "own-type simhit midpoints of the chamber, chamber frame (line*; none without own-type simhits at two different "
+      "z, normally two layers). Per point as "
       "in MuonCSCLayer: x, y in the layer frame, fs = CSCLayerGeometry::strip (clamped to [0, N]), wg 0-based; "
       "*Lo / *Hi at the gas-gap surfaces, layer-frame z = -g/2 and +g/2");
   addColumn<int16_t>(
@@ -364,7 +365,8 @@ void CSCLCTSimTrackTableProducer::produce(edm::Event& event, const edm::EventSet
       "hasLine",
       simLayers,
       [](const SimLayerRow& r) { return r.line.has; },
-      "the least-squares line exists (own-type simhits on at least two layers)");
+      "the least-squares line exists (own-type simhits at two or more different chamber z, normally on two or more "
+      "layers)");
   addColumn<float>(
       *simLayerTable,
       "lineX",
