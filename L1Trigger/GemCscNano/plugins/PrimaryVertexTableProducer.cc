@@ -1,7 +1,7 @@
 // The central NanoAOD PV columns that RECO input allows (PhysicsTools/NanoAOD/plugins/VertexTableProducer.cc without
 // the miniAOD-only score and PF-candidate sums): the main primary vertex (the first of the collection) and the numbers
-// of all and of good primary vertices. One row per event. Names, documentation, types and precisions as the central
-// producer; the uint8 counts throw above 255 vertices instead of wrapping.
+// of all and of good primary vertices. One row per event. Names, documentation and precisions as the central producer;
+// the counts are uint16 (central: uint8, which wraps above 255 vertices), otherwise the same values.
 
 #include "CommonTools/Utils/interface/StringCutObjectSelector.h"
 #include "DataFormats/NanoAOD/interface/FlatTable.h"
@@ -49,8 +49,8 @@ void PrimaryVertexTableProducer::produce(edm::StreamID, edm::Event& event, const
   // RECO's primary-vertex collection holds at least the beam-spot vertex
   if (pvs.empty())
     throw cms::Exception("InvalidInput") << "PrimaryVertexTableProducer: empty primary-vertex collection";
-  if (pvs.size() > std::numeric_limits<uint8_t>::max())
-    throw cms::Exception("InvalidInput") << "PrimaryVertexTableProducer: " << pvs.size() << " vertices exceed uint8";
+  if (pvs.size() > std::numeric_limits<uint16_t>::max())
+    throw cms::Exception("InvalidInput") << "PrimaryVertexTableProducer: " << pvs.size() << " vertices exceed uint16";
   const reco::Vertex& pv = pvs.front();
   const auto good = std::count_if(pvs.begin(), pvs.end(), [this](const reco::Vertex& v) { return goodPvCut_(v); });
 
@@ -60,8 +60,8 @@ void PrimaryVertexTableProducer::produce(edm::StreamID, edm::Event& event, const
   table->addColumnValue<float>("y", pv.position().y(), "main primary vertex position y coordinate", 10);
   table->addColumnValue<float>("z", pv.position().z(), "main primary vertex position z coordinate", 16);
   table->addColumnValue<float>("chi2", pv.normalizedChi2(), "main primary vertex reduced chi2", 8);
-  table->addColumnValue<uint8_t>("npvs", pvs.size(), "total number of reconstructed primary vertices");
-  table->addColumnValue<uint8_t>(
+  table->addColumnValue<uint16_t>("npvs", pvs.size(), "total number of reconstructed primary vertices");
+  table->addColumnValue<uint16_t>(
       "npvsGood", good, "number of good reconstructed primary vertices. selection:" + goodPvCutString_);
   event.put(std::move(table));
 }
