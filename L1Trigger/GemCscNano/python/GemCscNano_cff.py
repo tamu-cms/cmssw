@@ -14,12 +14,15 @@
 #   L1Mu                                the central table, every BX of the uGMT readout
 #   PV                                  primaryVertexTable: the central PV count columns and main PV, from RECO
 #                                       offlinePrimaryVertices
-#   TMBHeader, TMBHeaderRaw             tmbHeaderTable: the (O)TMB DAQ header of each chamber readout, words 0-26
-#                                       (CSCTMBStatusDigi keeps no more); needs muonCSCDigis.UnpackStatusDigis = True
+#   TMBHeader, TMBHeaderRaw,            tmbHeaderTable: the (O)TMB DAQ header of each chamber readout, words 0-26 from
+#   TMBHeaderUnmatched                  the status digis (CSCTMBStatusDigi keeps no more; needs
+#                                       muonCSCDigis.UnpackStatusDigis = True), words 27-42 from a second decoding of
+#                                       the raw data with the unpacker's classes and settings, flagged per row
 #   EMTFMuon                            emtfMuonTable: the EMTF output tracks as the uGMT receives them
 #                                       (gmtStage2Digis:EMTF), every BX
 #   EMTFHit, EMTFTrack, EMTFLCT         emtfDaqTable on the EMTF unpacker emtfStage2Digis (gemCscNanoDataTask: data
-#                                       only, MC RAW has no EMTF readout): the EMTF DAQ hits, tracks and LCTs
+#                                       only, MC RAW has no EMTF readout): the EMTF DAQ hits, tracks and LCTs; the
+#                                       exact LCT <-> EMTFLCT match (EMTFLCT and LCT columns, data only)
 #   HLT_* and L1_* bits                 the muon HLT paths and L1 seeds (gemCscNanoHLTBits, gemCscNanoL1Bits),
 #                                       written by NanoAODOutputModule
 #   GenPart, SimTrack, SimTrackCSCLayer gemCscNanoMCTask (MC only; GenPart and Pileup as in the central NanoAOD)
@@ -110,11 +113,13 @@ gemCscNanoL1Bits = triggerResultsSelector.clone(src="l1bits", prefix="L1_", sele
 # is its copy, same order: PATVertexSlimmer.cc), with the central good-vertex cut.
 primaryVertexTable = primaryVertexTableProducer.clone(src="offlinePrimaryVertices", goodPvCut=_vertexTable.goodPvCut,
                                                       name="PV")
-# TMB header: the unpacker's CSCTMBStatusDigis (it makes them only with UnpackStatusDigis = True).
-tmbHeaderTable = tmbHeaderTableProducer.clone(src=cms.InputTag("muonCSCDigis", "MuonCSCTMBStatusDigi"))
+# TMB header: the unpacker's CSCTMBStatusDigis (it makes them only with UnpackStatusDigis = True); words 27-42 from the
+# raw data the unpacker reads (the producer checks it against the unpacker's InputObjects).
+tmbHeaderTable = tmbHeaderTableProducer.clone(src=cms.InputTag("muonCSCDigis", "MuonCSCTMBStatusDigi"),
+                                              raw="rawDataCollector")
 # EMTF: the output tracks as the uGMT reads them out (data and MC); the EMTF DAQ readout (data only).
 emtfMuonTable = emtfMuonTableProducer.clone(src=cms.InputTag("gmtStage2Digis", "EMTF"))
-emtfDaqTable = emtfDaqTableProducer.clone(src="emtfStage2Digis")
+emtfDaqTable = emtfDaqTableProducer.clone(src="emtfStage2Digis", lctTable=cms.InputTag("cscLCTRecoMuonTable", "lct"))
 # Every BX of the uGMT readout: the producer clamps [minBX, maxBX] to the BXVector's range (SimpleFlatTableProducer.h).
 l1MuTable = _l1MuTable.clone(minBX=-1000, maxBX=1000)
 

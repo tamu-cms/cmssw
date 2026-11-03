@@ -1,7 +1,10 @@
 <use name="CommonTools/Utils"/>
+<use name="CondFormats/CSCObjects"/>
+<use name="CondFormats/DataRecord"/>
 <use name="DataFormats/Common"/>
 <use name="DataFormats/CSCDigi"/>
 <use name="DataFormats/CSCRecHit"/>
+<use name="DataFormats/FEDRawData"/>
 <use name="DataFormats/HepMCCandidate"/>
 <use name="DataFormats/L1TMuon"/>
 <use name="DataFormats/Math"/>

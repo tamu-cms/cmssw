@@ -8,7 +8,13 @@
 //              fills no hit index, EMTFTrack::HitIdx(): the rows are found by the hit's identity fields);
 //   EMTFLCT    the CSCCorrelatedLCTDigis the unpacker builds from the CSC hits: one per distinct LCT, from its
 //              first copy in unpacking order, home or neighbor sector (EMTFBlockME.cc:315-357), with the columns of the
-//              LCT table (gemcscnano::makeLCTTable).
+//              LCT table (gemcscnano::makeLCTTable), and its match to the LCT table (below);
+//   LCT        (extension of the LCT table) the match seen from the LCT rows.
+// LCT <-> EMTFLCT: both are the LCT word the (O)TMB sent, decoded by two unpackers (CSC DAQ readout, EMTF input
+// readout), so rows are matched by exact equality of their stored identity columns endcap, station, ring, chamber,
+// es (the key eighth-strip, which contains the half-strip) and wg; no tolerance. Rows without a partner or with
+// several are flagged, never dropped: nLCTMatch / nEMTFLCTMatch count the partners, the index is set only for a
+// one-to-one pair, lctDiff lists the compared fields that differ in it.
 
 #include "DataFormats/CSCDigi/interface/CSCCorrelatedLCTDigiCollection.h"
 #include "DataFormats/L1TMuon/interface/EMTFHit.h"
@@ -28,6 +34,8 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -55,6 +63,34 @@ namespace {
     }
   }
 
+  // a column of a table made by gemcscnano::makeLCTTable, as int (the identity and compared fields)
+  std::vector<int> lctColumn(const nanoaod::FlatTable& table, const std::string& name) {
+    const int i = table.columnIndex(name);
+    if (i < 0)
+      throw cms::Exception("LogicError") << "EMTFDaqTableProducer: table " << table.name() << " has no column " << name;
+    std::vector<int> v;
+    switch (table.columnType(i)) {
+      case nanoaod::FlatTable::ColumnType::Int16:
+        for (auto x : table.columnData<int16_t>(i))
+          v.push_back(x);
+        break;
+      case nanoaod::FlatTable::ColumnType::Bool:
+        for (auto x : table.columnData<bool>(i))
+          v.push_back(x);
+        break;
+      default:
+        throw cms::Exception("LogicError")
+            << "EMTFDaqTableProducer: column " << name << " of " << table.name() << " is not int16 or bool";
+    }
+    return v;
+  }
+
+  constexpr std::array<const char*, 6> kIdentity = {{"endcap", "station", "ring", "chamber", "es", "wg"}};
+  // compared fields of a one-to-one pair and their lctDiff bits
+  constexpr std::array<std::pair<const char*, int>, 5> kCompared = {
+      {{"quality", 1}, {"pattern", 2}, {"bend", 4}, {"slope", 8}, {"valid", 16}}};
+  constexpr int kSlopeBit = 8;
+
 }  // namespace
 
 class EMTFDaqTableProducer : public edm::global::EDProducer<> {
@@ -68,6 +104,7 @@ private:
   const edm::EDGetTokenT<l1t::EMTFHitCollection> hitToken_;
   const edm::EDGetTokenT<l1t::EMTFTrackCollection> trackToken_;
   const edm::EDGetTokenT<CSCCorrelatedLCTDigiCollection> lctToken_;
+  const edm::EDGetTokenT<nanoaod::FlatTable> lctTableToken_;
   const std::string label_;
 };
 
@@ -75,10 +112,12 @@ EMTFDaqTableProducer::EMTFDaqTableProducer(const edm::ParameterSet& ps)
     : hitToken_(consumes(ps.getParameter<edm::InputTag>("src"))),
       trackToken_(consumes(ps.getParameter<edm::InputTag>("src"))),
       lctToken_(consumes(ps.getParameter<edm::InputTag>("src"))),
+      lctTableToken_(consumes(ps.getParameter<edm::InputTag>("lctTable"))),
       label_(ps.getParameter<edm::InputTag>("src").encode()) {
   produces<nanoaod::FlatTable>("hit");
   produces<nanoaod::FlatTable>("track");
   produces<nanoaod::FlatTable>("lct");
+  produces<nanoaod::FlatTable>("lctMatch");
 }
 
 void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::EventSetup&) const {
@@ -263,12 +302,13 @@ void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::
             " hit; -1: no hit in the station; -2: the hit is "
             "not in EMTFHit (removed by the unpacker's zero suppression)");
 
+  const auto& emtfLcts = event.get(lctToken_);
   auto lctTable = gemcscnano::makeLCTTable(
-      event.get(lctToken_),
+      emtfLcts,
       "EMTFLCT",
       "LCTs of the EMTF readout (data only): every CSCCorrelatedLCTDigi of " + label_ +
           ", built by the EMTF unpacker from the CSC hits: one per distinct LCT (its first copy, home or neighbor "
-          "sector), in collection order",
+          "sector), in collection order; matched to LCT by exact equality of endcap, station, ring, chamber, es, wg",
       {{"bx",
         "BX: the EMTF hit bx + 8 (emulator convention, CSCConstants::LCT_CENTRAL_BX); not comparable with LCT_bx"},
        {"ring", "ring as CSCDetId (ME1/1a and ME1b: 1)"},
@@ -276,14 +316,107 @@ void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::
        {"run3Pattern", "Run-3 pattern as the EMTF unpacker sets it (a partial raw field)"},
        {"gemLayer", "not set by the EMTF unpacker (EMTFHit::CreateCSCCorrelatedLCTDigi)"}});
 
+  // LCT <-> EMTFLCT on the stored values: the LCT table's rows, whatever collection it is built from
+  const auto& lctRows = event.get(lctTableToken_);
+  if (lctRows.name() != "LCT" || lctRows.extension() || lctRows.singleton())
+    throw cms::Exception("Configuration")
+        << "EMTFDaqTableProducer: lctTable is the table " << lctRows.name() << ", not the main LCT table";
+  const unsigned nL = lctRows.nRows(), nE = lctTable->nRows();
+  if (nL > unsigned(std::numeric_limits<int16_t>::max()) || nE > unsigned(std::numeric_limits<int16_t>::max()))
+    throw cms::Exception("InvalidInput") << "EMTFDaqTableProducer: " << nL << " LCT or " << nE
+                                         << " EMTFLCT rows do not fit an int16 index";
+  // the EMTF unpacker sets the slope of the Run-3 LCTs only (OTMB chambers, Run-3 DAQ format, EMTFBlockME.cc:253-266);
+  // its other LCTs keep EMTFHit's default (-99): slope is compared only for Run-3 EMTF LCTs
+  std::vector<bool> emtfRun3;
+  for (auto detUnit = emtfLcts.begin(); detUnit != emtfLcts.end(); ++detUnit)
+    for (auto lct = (*detUnit).second.first; lct != (*detUnit).second.second; ++lct)
+      emtfRun3.push_back(lct->isRun3());
+  if (emtfRun3.size() != nE)
+    throw cms::Exception("LogicError") << "EMTFDaqTableProducer: " << emtfRun3.size() << " EMTF LCT digis but " << nE
+                                       << " EMTFLCT rows";
+  using Key = std::array<int, kIdentity.size()>;
+  auto keys = [](const nanoaod::FlatTable& t) {
+    std::vector<Key> k(t.nRows());
+    for (unsigned f = 0; f < kIdentity.size(); ++f) {
+      const auto c = lctColumn(t, kIdentity[f]);
+      for (unsigned r = 0; r < t.nRows(); ++r)
+        k[r][f] = c[r];
+    }
+    return k;
+  };
+  const auto keyL = keys(lctRows), keyE = keys(*lctTable);
+  std::map<Key, std::vector<int>> rowsL, rowsE;
+  for (unsigned i = 0; i < nL; ++i)
+    rowsL[keyL[i]].push_back(i);
+  for (unsigned j = 0; j < nE; ++j)
+    rowsE[keyE[j]].push_back(j);
+  auto partners = [](const std::map<Key, std::vector<int>>& rows, const Key& k) -> const std::vector<int>* {
+    const auto it = rows.find(k);
+    return it == rows.end() ? nullptr : &it->second;
+  };
+  std::vector<std::vector<int>> comparedL, comparedE;
+  for (const auto& [name, bit] : kCompared) {
+    comparedL.push_back(lctColumn(lctRows, name));
+    comparedE.push_back(lctColumn(*lctTable, name));
+  }
+  std::vector<int16_t> nLCTMatch(nE, 0), lctIdx(nE, -1), lctDiff(nE, -1), nEMTFLCTMatch(nL, 0), emtfLctIdx(nL, -1);
+  for (unsigned i = 0; i < nL; ++i)
+    if (const auto* p = partners(rowsE, keyL[i]))
+      nEMTFLCTMatch[i] = p->size();
+  for (unsigned j = 0; j < nE; ++j) {
+    const auto* p = partners(rowsL, keyE[j]);
+    if (!p)
+      continue;
+    nLCTMatch[j] = p->size();
+    if (p->size() != 1 || rowsE.at(keyE[j]).size() != 1)
+      continue;
+    const int i = p->front();
+    lctIdx[j] = i;
+    emtfLctIdx[i] = j;
+    int diff = 0;
+    for (unsigned f = 0; f < kCompared.size(); ++f)
+      if (comparedL[f][i] != comparedE[f][j] && (kCompared[f].second != kSlopeBit || emtfRun3[j]))
+        diff |= kCompared[f].second;
+    lctDiff[j] = diff;
+  }
+  lctTable->addColumn<int16_t>(
+      "nLCTMatch",
+      nLCTMatch,
+      "number of LCT rows with the same endcap, station, ring, chamber, es and wg (exact equality): 0 = no LCT "
+      "(e.g. another BX or a chamber the CSC DAQ did not read out), 2 or more = ambiguous");
+  lctTable->addColumn<int16_t>(
+      "lctIdx",
+      lctIdx,
+      "row in LCT of the one-to-one partner (nLCTMatch = 1 and that LCT's nEMTFLCTMatch = 1), else -1");
+  lctTable->addColumn<int16_t>(
+      "lctDiff",
+      lctDiff,
+      "one-to-one pairs: bits of the compared fields that differ, 1 quality, 2 pattern, 4 bend, 8 slope (only for "
+      "Run-3 EMTF LCTs, the OTMB chambers: the EMTF unpacker sets no other slope), 16 valid; 0 = identical; -1 = no "
+      "one-to-one partner. Not compared: bx (1 bit in LCT, EMTF bx + 8 here), run3Pattern (the EMTF unpacker keeps a "
+      "partial field), trknmb, type, gemLayer, slope6");
+  auto lctMatchTable = std::make_unique<nanoaod::FlatTable>(nL, "LCT", false, true);
+  lctMatchTable->addColumn<int16_t>(
+      "nEMTFLCTMatch",
+      nEMTFLCTMatch,
+      "data: number of EMTFLCT rows with the same endcap, station, ring, chamber, es and wg (exact equality): 0 = "
+      "none, 2 or more = ambiguous");
+  lctMatchTable->addColumn<int16_t>(
+      "emtfLctIdx",
+      emtfLctIdx,
+      "data: row in EMTFLCT of the one-to-one partner (else -1); the field differences: EMTFLCT_lctDiff");
+
   event.put(std::move(hitTable), "hit");
   event.put(std::move(trackTable), "track");
   event.put(std::move(lctTable), "lct");
+  event.put(std::move(lctMatchTable), "lctMatch");
 }
 
 void EMTFDaqTableProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("src")->setComment("the EMTF unpacker (EMTFHitCollection, EMTFTrackCollection, LCT digis)");
+  desc.add<edm::InputTag>("lctTable", edm::InputTag("cscLCTRecoMuonTable", "lct"))
+      ->setComment("the LCT FlatTable (main table named LCT) the EMTFLCT rows are matched to");
   descriptions.add("emtfDaqTableProducer", desc);
 }
 
