@@ -2,8 +2,8 @@
 // it. MC RAW has no EMTF readout (L1Trigger/Configuration/python/L1TDigiToRaw_cff.py: "Missing: muon EMTF").
 //   EMTFHit    every hit of the unpacker's EMTFHitCollection, in unpacking order: the CSC LCTs, GEM clusters and RPC
 //              hits each sector received that the unpacker keeps (valid, BX within +-3, no exact duplicate: a GEM
-//              cluster differing only in layer counts as one; RPC/GEM hits only in sectors with a CSC hit,
-//              EMTFCollections.cc:12-26; neighbor copies included), in EMTF conventions;
+//              cluster at the roll and pad of an earlier one counts as one, whatever its layer or size; RPC/GEM hits
+//              only in sectors with a CSC hit, EMTFCollections.cc:12-26; neighbor copies included), in EMTF conventions;
 //   EMTFTrack  every track of the EMTFTrackCollection, with the row in EMTFHit of its hit in each station (the unpacker
 //              fills no hit index, EMTFTrack::HitIdx(): the rows are found by the hit's identity fields);
 //   EMTFLCT    the CSCCorrelatedLCTDigis the unpacker builds from the CSC hits: one per distinct LCT, from its
@@ -156,7 +156,8 @@ void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::
   addColumn<int16_t>(*hitTable, "phiFp", hits, [](const Hit& h) { return h.Phi_fp(); }, "RPC: fixed-point phi");
   addColumn<int16_t>(*hitTable, "thetaFp", hits, [](const Hit& h) { return h.Theta_fp(); }, "RPC: fixed-point theta");
 
-  // each track's hit in each station: the row of the identical hit of the collection, -1 if none
+  // each track's hit in each station: the row of the identical hit of the collection; -1 no hit in the station, -2
+  // the hit is not in the collection
   std::vector<std::array<int, 4>> hitIdx;
   hitIdx.reserve(tracks.size());
   for (const Track& t : tracks) {

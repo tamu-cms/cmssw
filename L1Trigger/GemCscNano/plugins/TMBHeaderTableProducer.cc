@@ -2,7 +2,7 @@
 // UnpackStatusDigis = True), one row per status digi in collection order (detector unit, then digi). CSCTMBStatusDigi
 // keeps only header words 0-26 of the 43 (CSCTMBStatusDigi.cc:12-16): every column is a field that lies entirely in
 // words 0-26; words 27-42 (ALCT words, MPC frames, GEM configuration, buffer status, HMT) are not available.
-//   TMBHeader     chamber, decoded header format, firmware revision, and every field of words 0-26 of the format's
+//   TMBHeader     chamber, decoded header format, firmware revision, and the fields of words 0-26 of the format's
 //                 CMSSW decoder (the CSCTMBHeader20xx struct `bits`, read by name); -1 where the format lacks a field;
 //                 decoded for the 2013 and 2020 formats only (2006, 2007: identification and raw words);
 //   TMBHeaderRaw  the same rows: header words 0-26 and the 7 trailer words the status digi holds.
@@ -391,7 +391,7 @@ void TMBHeaderTableProducer::produce(edm::StreamID, edm::Event& event, const edm
       rows,
       [](const Row& r) { return r.revision; },
       "firmware revision code (header word 7, 15 bits; formats 5-9: data format (rev>>9)&0xF, major (rev>>5)&0xF, "
-      "minor rev&0x1F); -1 for the 2006 format");
+      "minor rev&0x1F); -1 for the 2006 format and format 0");
   for (unsigned i = 0; i < kNDecoded; ++i)
     addColumn<int16_t>(*table, kColumns[i].name, rows, [i](const Row& r) { return r.values[i]; }, kColumns[i].doc);
 
