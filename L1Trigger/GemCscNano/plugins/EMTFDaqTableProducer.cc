@@ -37,9 +37,9 @@ namespace {
   // The identity fields of a hit, as the unpacker's duplicate checks use them (EMTFBlockME.cc:315-324,
   // EMTFBlockRPC.cc:253-263, EMTFBlockGEM.cc:251-261), plus the subsystem and the receiving sector.
   bool sameHit(const l1t::EMTFHit& a, const l1t::EMTFHit& b) {
-    if (a.Subsystem() != b.Subsystem() || a.BX() != b.BX() || a.Endcap() != b.Endcap() ||
-        a.Station() != b.Station() || a.Chamber() != b.Chamber() || a.Ring() != b.Ring() ||
-        a.Neighbor() != b.Neighbor() || a.Sector_idx() != b.Sector_idx())
+    if (a.Subsystem() != b.Subsystem() || a.BX() != b.BX() || a.Endcap() != b.Endcap() || a.Station() != b.Station() ||
+        a.Chamber() != b.Chamber() || a.Ring() != b.Ring() || a.Neighbor() != b.Neighbor() ||
+        a.Sector_idx() != b.Sector_idx())
       return false;
     switch (a.Subsystem()) {
       case L1TMuon::kCSC:
@@ -112,7 +112,8 @@ void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::
       hits,
       [](const Hit& h) { return h.Ring(); },
       "ring, EMTF convention: CSC ME1/1a = 4 (the LCT table's ring 1), RPC 2-3, GEM 1");
-  addColumn<int16_t>(*hitTable, "chamber", hits, [](const Hit& h) { return h.Chamber(); }, "chamber (CSCDetId numbering)");
+  addColumn<int16_t>(
+      *hitTable, "chamber", hits, [](const Hit& h) { return h.Chamber(); }, "chamber (CSCDetId numbering)");
   addColumn<int16_t>(
       *hitTable, "subsector", hits, [](const Hit& h) { return h.Subsector(); }, "subsector (ME2-4: -1 when unpacked)");
   addColumn<int16_t>(*hitTable, "cscId", hits, [](const Hit& h) { return h.CSC_ID(); }, "CSC ID in the sector (CSC)");
@@ -190,11 +191,7 @@ void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::
   addColumn<int16_t>(
       *trackTable, "sectorIdx", trackRows, [](const R& r) { return r.t->Sector_idx(); }, "sector index (0-11)");
   addColumn<int16_t>(
-      *trackTable,
-      "bx",
-      trackRows,
-      [](const R& r) { return r.t->BX(); },
-      "BX relative to the L1A (EMTF convention)");
+      *trackTable, "bx", trackRows, [](const R& r) { return r.t->BX(); }, "BX relative to the L1A (EMTF convention)");
   addColumn<int16_t>(
       *trackTable, "mode", trackRows, [](const R& r) { return r.t->Mode(); }, "station mode (4 bits, ME1 = 8)");
   addColumn<int16_t>(
@@ -224,12 +221,16 @@ void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::
   addColumn<int16_t>(
       *trackTable, "hwDXY", trackRows, [](const R& r) { return r.t->GMT_dxy(); }, "hardware impact-parameter class");
   addColumn<int16_t>(
-      *trackTable, "hwEta", trackRows, [](const R& r) { return r.t->GMT_eta(); }, "hardware eta: eta = hwEta * 0.010875");
+      *trackTable,
+      "hwEta",
+      trackRows,
+      [](const R& r) { return r.t->GMT_eta(); },
+      "hardware eta: eta = hwEta * 0.010875");
   addColumn<int16_t>(
       *trackTable, "hwPhi", trackRows, [](const R& r) { return r.t->GMT_phi(); }, "hardware local phi (LSB 2pi/576)");
-  addColumn<int16_t>(*trackTable, "hwQual", trackRows, [](const R& r) { return r.t->GMT_quality(); }, "hardware quality");
   addColumn<int16_t>(
-      *trackTable, "hwSign", trackRows, [](const R& r) { return r.t->GMT_charge(); }, "charge sign bit");
+      *trackTable, "hwQual", trackRows, [](const R& r) { return r.t->GMT_quality(); }, "hardware quality");
+  addColumn<int16_t>(*trackTable, "hwSign", trackRows, [](const R& r) { return r.t->GMT_charge(); }, "charge sign bit");
   addColumn<int16_t>(
       *trackTable, "hwSignValid", trackRows, [](const R& r) { return r.t->GMT_charge_valid(); }, "charge valid bit");
   addColumn<int16_t>(

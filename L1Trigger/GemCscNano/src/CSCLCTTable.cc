@@ -106,7 +106,8 @@ namespace gemcscnano {
         "gemLayer",
         lcts,
         [](const LCTRow& m) { return m.lct->getGemLayerUsedForSlopeComputation(); },
-        d("gemLayer", "GEM layer used for the slope: emulator 1, 2, 0 = none; Run3-b unpacked data the raw 1-bit field"));
+        d("gemLayer",
+          "GEM layer used for the slope: emulator 1, 2, 0 = none; Run3-b unpacked data the raw 1-bit field"));
     for (const auto& [column, text] : docOverrides)
       if (!used.count(column))
         throw cms::Exception("Configuration") << "makeLCTTable: doc override for unknown column " << column;

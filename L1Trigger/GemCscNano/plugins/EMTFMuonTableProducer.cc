@@ -38,8 +38,7 @@ private:
 };
 
 EMTFMuonTableProducer::EMTFMuonTableProducer(const edm::ParameterSet& ps)
-    : token_(consumes(ps.getParameter<edm::InputTag>("src"))),
-      label_(ps.getParameter<edm::InputTag>("src").encode()) {
+    : token_(consumes(ps.getParameter<edm::InputTag>("src"))), label_(ps.getParameter<edm::InputTag>("src").encode()) {
   produces<nanoaod::FlatTable>();
 }
 
@@ -130,19 +129,18 @@ void EMTFMuonTableProducer::produce(edm::StreamID, edm::Event& event, const edm:
       rows,
       [](const Row& r) { return r.mu->hwSign(); },
       "charge sign bit: charge = (-1)^hwSign when hwSignValid");
-  addColumn<int16_t>(
-      *table, "hwSignValid", rows, [](const Row& r) { return r.mu->hwSignValid(); }, "charge valid bit");
+  addColumn<int16_t>(*table, "hwSignValid", rows, [](const Row& r) { return r.mu->hwSignValid(); }, "charge valid bit");
   addColumn<int16_t>(
       *table, "hwQual", rows, [](const Row& r) { return r.mu->hwQual(); }, "hardware quality (4 bits, from the mode)");
   addColumn<bool>(*table, "hwHF", rows, [](const Row& r) { return r.mu->hwHF() != 0; }, "halo / HF bit");
   const std::vector<std::pair<std::string, A::emtfAddress>> address = {{"me1Seg", A::kME1Seg},
-                                                                         {"me1Ch", A::kME1Ch},
-                                                                         {"me2Seg", A::kME2Seg},
-                                                                         {"me2Ch", A::kME2Ch},
-                                                                         {"me3Seg", A::kME3Seg},
-                                                                         {"me3Ch", A::kME3Ch},
-                                                                         {"me4Seg", A::kME4Seg},
-                                                                         {"me4Ch", A::kME4Ch}};
+                                                                       {"me1Ch", A::kME1Ch},
+                                                                       {"me2Seg", A::kME2Seg},
+                                                                       {"me2Ch", A::kME2Ch},
+                                                                       {"me3Seg", A::kME3Seg},
+                                                                       {"me3Ch", A::kME3Ch},
+                                                                       {"me4Seg", A::kME4Seg},
+                                                                       {"me4Ch", A::kME4Ch}};
   for (const auto& [name, key] : address)
     addColumn<int16_t>(
         *table,
@@ -162,13 +160,10 @@ void EMTFMuonTableProducer::produce(edm::StreamID, edm::Event& event, const edm:
       *table,
       "ptUnconstrained",
       rows,
-      [](const Row& r) {
-        return r.mu->hwPtUnconstrained() == 0 ? 0.f : float(r.mu->hwPtUnconstrained() - 1);
-      },
+      [](const Row& r) { return r.mu->hwPtUnconstrained() == 0 ? 0.f : float(r.mu->hwPtUnconstrained() - 1); },
       "beam-spot-unconstrained pt, GeV: hwPtUnconstrained - 1 (0 if 0)",
       12);
-  addColumn<float>(
-      *table, "eta", rows, [&](const Row& r) { return float(p4(r).eta()); }, "eta: hwEta * 0.010875", 12);
+  addColumn<float>(*table, "eta", rows, [&](const Row& r) { return float(p4(r).eta()); }, "eta: hwEta * 0.010875", 12);
   addColumn<float>(
       *table,
       "phi",
