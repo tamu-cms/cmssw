@@ -12,9 +12,12 @@
 #   TrigObj                             the HLT muon objects (central muon selection, PAT trigger chain of miniAOD run
 #                                       here on hltTriggerSummaryAOD) with one filter bit per single-muon path
 #   L1Mu                                the central table, every BX of the uGMT readout
+#   PV                                  primaryVertexTable: the central PV count columns and main PV, from RECO
+#                                       offlinePrimaryVertices
 #   HLT_* and L1_* bits                 the muon HLT paths and L1 seeds (gemCscNanoHLTBits, gemCscNanoL1Bits),
 #                                       written by NanoAODOutputModule
-#   GenPart, SimTrack, SimTrackCSCLayer gemCscNanoMCTask (MC only; GenPart as in the central NanoAOD)
+#   GenPart, SimTrack, SimTrackCSCLayer gemCscNanoMCTask (MC only; GenPart and Pileup as in the central NanoAOD)
+#   Pileup
 # Module labels end in "Table" where NanoAODOutputModule must keep the product (keep nanoaodFlatTable_*Table_*_*).
 # The PAT trigger, gen-particle and NanoAOD modules keep their central labels (patTrigger, prunedGenParticles,
 # finalGenParticles, triggerObjectTable, l1bits, ...): this cff cannot be loaded into a job that also runs the PAT or
@@ -23,12 +26,15 @@ import FWCore.ParameterSet.Config as cms
 
 from L1Trigger.GemCscNano.cscLCTRecoMuonTableProducer_cfi import cscLCTRecoMuonTableProducer
 from L1Trigger.GemCscNano.cscLCTSimTrackTableProducer_cfi import cscLCTSimTrackTableProducer
+from L1Trigger.GemCscNano.primaryVertexTableProducer_cfi import primaryVertexTableProducer
 from L1Trigger.GemCscNano.triggerResultsSelector_cfi import triggerResultsSelector
 from PhysicsTools.NanoAOD.genparticles_cff import finalGenParticles, genIso, genParticleTable
+from PhysicsTools.NanoAOD.globals_cff import puTable as _puTable
 from PhysicsTools.NanoAOD.l1trig_cff import l1MuTable as _l1MuTable
 from PhysicsTools.NanoAOD.triggerObjects_cff import l1bits as _l1bits
 from PhysicsTools.NanoAOD.triggerObjects_cff import mksel, unpackedPatTrigger
 from PhysicsTools.NanoAOD.triggerObjects_cff import triggerObjectTable as _triggerObjectTable
+from PhysicsTools.NanoAOD.vertices_cff import vertexTable as _vertexTable
 from PhysicsTools.PatAlgos.slimming.genParticles_cff import (
     packedGenParticles,
     prunedGenParticles,
@@ -90,6 +96,10 @@ gemCscNanoHLTBits = triggerResultsSelector.clone(src=cms.InputTag("TriggerResult
 # the central l1bits (final decision), without the unprefireable-event bits (not muon seeds)
 l1bits = _l1bits.clone(storeUnprefireableBits=False)
 gemCscNanoL1Bits = triggerResultsSelector.clone(src="l1bits", prefix="L1_", select=_muonToken, veto=_otherObject)
+# PV: the central NanoAOD PV columns computable on RECO, on offlinePrimaryVertices (miniAOD's offlineSlimmedPrimaryVertices
+# is its copy, same order: PATVertexSlimmer.cc), with the central good-vertex cut.
+primaryVertexTable = primaryVertexTableProducer.clone(src="offlinePrimaryVertices", goodPvCut=_vertexTable.goodPvCut,
+                                                      name="PV")
 # Every BX of the uGMT readout: the producer clamps [minBX, maxBX] to the BXVector's range (SimpleFlatTableProducer.h).
 l1MuTable = _l1MuTable.clone(minBX=-1000, maxBX=1000)
 
@@ -104,12 +114,17 @@ gemCscNanoTask = cms.Task(
     l1bits,
     gemCscNanoL1Bits,
     l1MuTable,
+    primaryVertexTable,
 )
 
 # MC: the central GenPart (the miniAOD pruning genParticles -> prunedGenParticlesWithStatusOne -> prunedGenParticles,
 # then the NanoAOD finalGenParticles, with genIso on packedGenParticles), and the SimTracks with their links to GenPart
 # and their CSC layers.
 cscLCTSimTrackTable = cscLCTSimTrackTableProducer.clone()
+# Pileup: the central table on RECO inputs: addPileupInfo (the input of miniAOD's slimmedAddPileupInfo, which keeps every
+# BX's counts and the BX-0 details this table reads: PileupSummaryInfoSlimmer.cc; Run3Winter26 RECO has no slimmed copy)
+# and offlinePrimaryVertices. NPUTablesProducer writes no columns when addPileupInfo is missing.
+puTable = _puTable.clone(src="addPileupInfo", pvsrc="offlinePrimaryVertices")
 
 gemCscNanoMCTask = cms.Task(
     prunedGenParticlesWithStatusOne,
@@ -119,4 +134,5 @@ gemCscNanoMCTask = cms.Task(
     genIso,
     genParticleTable,
     cscLCTSimTrackTable,
+    puTable,
 )
