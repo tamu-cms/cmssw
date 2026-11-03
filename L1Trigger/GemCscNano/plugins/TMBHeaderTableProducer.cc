@@ -221,101 +221,129 @@ namespace {
   X(gemClctWin, gem_clct_win, "position of the CLCT in the GEM-CLCT match window (formats 8, 9)")                      \
   X(alctGemWin, alct_gem_win, "position of the GEM in the ALCT-GEM match window (formats 8, 9)")
 
-// The decoded columns of words 27-42 (the second decoding of the raw data). Meanings from the OTMB firmware
-// (otmb_fw_code utils/sequencer.v:5514-5646): word 36 is the GEM word when GEM readout is enabled, the RPC word
+// The decoded columns of words 27-42 (the second decoding of the raw data). Meanings from the OTMB firmware source
+// (otmb_fw_code evka-dev ce999aa, utils/sequencer.v:5514-5646; not the deployed builds, and the copper-TMB firmware of
+// format 6 is not in that source: its fields follow the CMSSW struct): word 36 is the GEM word when GEM readout is enabled, the RPC word
 // otherwise (:5592), decoded here by format; word 40 bits 5:4 are the CFEB RAM parity errors and bits 7:6 the bad-bits
 // flags of CFEBs 6:5 (:5619-5620), the opposite of the CMSSW names; word 41 bits 14:13 in the Run-3 format are ALCT BXN
 // bits 2:1, which carry the anode HMT in the Run-3 ALCT format (:5644-5645).
-#define GCN_TMB_COLUMNS_27(X, X2)                                                                                     \
-  X(clct0KeyHigh, clct0_key_high, "CLCT0 key half-strip bit 7")                                                       \
-  X(clct1KeyHigh, clct1_key_high, "CLCT1 key half-strip bit 7")                                                       \
-  X(clctBxn, clct_bxn, "CLCT0/1 BXN after drift (2 bits)")                                                            \
-  X(clctSyncErr, clct_sync_err, "CLCT BX0 sync error")                                                                \
-  X(clct0InvalidPattern, clct0Invalid, "CLCT0 had an invalid pattern after drift")                                    \
-  X(clct1InvalidPattern, clct1Invalid, "CLCT1 had an invalid pattern after drift")                                    \
-  X(clct1Busy, clct1Busy, "second CLCT busy (logic error indicator)")                                                 \
-  X(parityErrCfebRam, parity_err_cfeb_ram, "CFEB RAM parity error of CFEBs 4:0, latched (6:5: parityErrCfebRamHigh)") \
-  X(parityErrGemRpcMini,                                                                                              \
-    parity_err_rpc,                                                                                                   \
-    "GEM, RPC or miniscope RAM parity error, latched (CMSSW name parity_err_rpc)")                                    \
-  X(parityErrSummary, parity_err_summary, "parity error summary, latched")                                            \
-  X(alct0Valid, alct0Valid, "ALCT0 valid")                                                                            \
-  X(alct0Quality, alct0Quality, "ALCT0 quality (2 bits)")                                                             \
-  X(alct0Amu, alct0Amu, "ALCT0 accelerator-muon flag")                                                                \
-  X(alct0Key, alct0Key, "ALCT0 key wire group")                                                                       \
-  X(alctPretrigWin, alct_pretrig_win, "position of the ALCT in the CLCT pre-trigger window (formats 4-6)")            \
-  X(clct1Slope, clct1_slope, "CLCT1 CCLUT slope magnitude (formats 7-9)")                                             \
-  X(alct1Valid, alct1Valid, "ALCT1 valid")                                                                            \
-  X(alct1Quality, alct1Quality, "ALCT1 quality (2 bits)")                                                             \
-  X(alct1Amu, alct1Amu, "ALCT1 accelerator-muon flag")                                                                \
-  X(alct1Key, alct1Key, "ALCT1 key wire group")                                                                       \
-  X(driftDelay, drift_delay, "CLCT drift delay (configuration)")                                                      \
-  X(bcbReadEnable, bcb_read_enable, "blocked CFEB bits in the readout (configuration)")                               \
-  X(hsLayerTrig, hs_layer_trig, "layer-mode trigger")                                                                 \
-  X(alctBxn, alctBXN, "ALCT0/1 BXN (5 bits; formats 4-6)")                                                            \
-  X(hmtNhitsHigh, hmt_nhits_bits_high, "HMT number of hits, bits 6:2 (formats 7-9)")                                  \
-  X(alctEccErr, alct_ecc_err, "ALCT trigger-path ECC error code (2 bits)")                                            \
-  X(cfebBadbitsFound, cfeb_badbits_found, "CFEBs 4:0 with at least one bad bit (6:5: cfebBadbitsFoundHigh)")          \
-  X(cfebBadbitsBlocked, cfeb_badbits_blocked, "a CFEB had bad bits that were blocked")                                \
-  X(alctCfgDone, alctCfg, "ALCT FPGA configuration done")                                                             \
-  X(bx0Match, bx0_match, "ALCT BX0 and CLCT BX0 match")                                                               \
-  X(mpcDelay, MPCDelay, "MPC transmit delay (configuration)")                                                         \
-  X(mpcAccept, MPCAccept, "MPC accept response for the two LCTs (2 bits)")                                            \
-  X(cfebsEnabled, CFEBsEnabled, "CFEBs 4:0 enabled for triggering (6:5: cfebsEnabledHigh)")                           \
-  X(rpcList, RPCList, "RPCs in the readout (formats 4-7)")                                                            \
-  X(nRPCs, NRPCs, "number of RPCs in the readout (formats 4-7)")                                                      \
-  X(rpcEnable, RPCEnable, "RPC readout enabled (configuration; formats 4-7)")                                         \
-  X(fifoTbinsRPC, fifo_tbins_rpc, "RPC FIFO time bins read out (configuration; formats 4-7)")                         \
-  X(fifoPretrigRPC, fifo_pretrig_rpc, "RPC FIFO time bins before the pre-trigger (configuration; formats 4-7)")       \
-  X(gemEnabledFibers, gem_enabled_fibers_, "GEM fibers enabled for readout (4 bits, configuration; formats 8, 9)")    \
-  X(gemZeroSuppression, gem_zero_suppression_, "GEM zero suppression enabled (configuration; formats 8, 9)")          \
-  X(fifoTbinsGEM, fifo_tbins_gem_, "GEM FIFO time bins read out (configuration; formats 8, 9)")                       \
-  X(fifoPretrigGEM, fifo_pretrig_gem_, "GEM FIFO time bins before the pre-trigger (configuration; formats 8, 9)")     \
-  X(rWrBufAdr, r_wr_buf_adr, "buffer RAM write address at the pre-trigger (11 bits)")                                 \
-  X(rWrBufReady, r_wr_buf_ready, "write buffer ready at the pre-trigger")                                             \
-  X(wrBufReady, wr_buf_ready, "write buffer ready at readout")                                                        \
-  X(bufQFull, buf_q_full, "all raw-hits RAM in use")                                                                  \
-  X(bufQEmpty, buf_q_empty, "no fences left on the buffer stack")                                                     \
-  X(rBufFenceDist, r_buf_fence_dist, "distance to the first fence address at the pre-trigger (11 bits)")              \
-  X(bufQOvfErr, buf_q_ovf_err, "buffer stack: push when full")                                                        \
-  X(bufQUdfErr, buf_q_udf_err, "buffer stack: pop when empty")                                                        \
-  X(bufQAdrErr, buf_q_adr_err, "buffer stack: popped fence address differs from the release address")                 \
-  X(bufStalled, buf_stalled, "buffer write pointer hit a fence and stalled (latched)")                                \
-  X(bufFenceCnt, buf_fence_cnt, "number of fences in the fence RAM (12 bits)")                                        \
-  X(reverseHsCsc, reverse_hs_csc, "reversed staggered CSC, non-ME1 (configuration)")                                  \
-  X(reverseHsMe1a, reverse_hs_me1a, "ME1a half-strip order reversed (configuration)")                                 \
-  X(reverseHsMe1b, reverse_hs_me1b, "ME1b half-strip order reversed (configuration)")                                 \
-  X(activeCFEBsHigh, activeCFEBs_2, "active-CFEB list sent to the DMB, bits 6:5")                                     \
-  X(readCFEBsHigh, readCFEBs_2, "CFEBs read out, bits 6:5")                                                           \
-  X(parityErrCfebRamHigh,                                                                                             \
-    cfeb_badbits_found_2,                                                                                             \
-    "CFEB RAM parity error of CFEBs 6:5, word 40 bits 5:4 (CMSSW name cfeb_badbits_found_2)")                         \
-  X(cfebBadbitsFoundHigh,                                                                                             \
-    parity_err_cfeb_ram_2,                                                                                            \
-    "CFEBs 6:5 with at least one bad bit, word 40 bits 7:6 (CMSSW name parity_err_cfeb_ram_2)")                       \
-  X(cfebsEnabledHigh, CFEBsEnabled_2, "CFEBs 6:5 enabled for triggering")                                             \
-  X(bufFenceCntIsPeak, buf_fence_cnt_is_peak, "the current fence count is the peak")                                  \
-  X(mxcfeb, mxcfeb, "board with 7 CFEBs (formats 4-7; OTMBs in the Run-3 format write the GEM-CSC bend enable)")      \
-  X(gemCscBendEnable, gem_csc_bend_enable, "GEM-CSC bending enabled (configuration; formats 8, 9)")                   \
-  X(trigSourceMe1aMe1b, trig_source_vec, "pre-trigger was ME1a only (bit 0) or ME1b only (bit 1)")                    \
-  X(tmbTrigPulse, tmb_trig_pulse, "TMB trigger pulse coincident with the readout push")                               \
-  X(tmbAllowAlct, tmb_allow_alct, "ALCT-only TMB trigger allowed (configuration; formats 4-6)")                       \
-  X(tmbAllowClct, tmb_allow_clct, "CLCT-only TMB trigger allowed (configuration; formats 4-6)")                       \
-  X(tmbAllowMatch, tmb_allow_match, "ALCT-CLCT match trigger allowed (configuration; formats 4-6)")                   \
-  X(tmbAllowAlctRo, tmb_allow_alct_ro, "ALCT-only readout allowed (configuration; formats 4-6)")                      \
-  X(tmbAllowClctRo, tmb_allow_clct_ro, "CLCT-only readout allowed (configuration; formats 4-6)")                      \
-  X(tmbAllowMatchRo, tmb_allow_match_ro, "ALCT-CLCT match readout allowed (configuration; formats 4-6)")              \
-  X(run3TrigDf, run3_trig_df, "Run-3 trigger data format (configuration; formats 7-9)")                               \
-  X(gemEnable, gem_enable, "GEM enabled (configuration; formats 7-9)")                                                \
-  X(hmtMatchWin, hmt_match_win, "position of the HMT in its match window (4 bits; formats 7-9)")                      \
-  X(tmbAlctOnlyRo, tmb_alct_only_ro, "only the ALCT triggered (non-triggering readout)")                              \
-  X(tmbClctOnlyRo, tmb_clct_only_ro, "only the CLCT triggered (non-triggering readout)")                              \
-  X(tmbMatchRo, tmb_match_ro, "ALCT and CLCT matched in time (non-triggering readout)")                               \
-  X(tmbTrigKeep, tmb_trig_keep, "triggering readout event")                                                           \
-  X(tmbNonTrigKeep, tmb_non_trig_keep, "non-triggering readout event")                                                \
-  X(lyrThreshPretrig, lyr_thresh_pretrig, "layer pre-trigger threshold (configuration; formats 4, 5)")                \
-  X(layerTrigEn, layer_trig_en, "layer trigger mode enabled (configuration; formats 4, 5)")                           \
-  X(cathodeHmt, cathode_hmt, "cathode HMT bits (2; formats 6-9)")                                                     \
+#define GCN_TMB_COLUMNS_27(X, X2)                                                                                      \
+  X(clct0KeyHigh, clct0_key_high, "CLCT0 key half-strip bit 7")                                                        \
+  X(clct1KeyHigh, clct1_key_high, "CLCT1 key half-strip bit 7")                                                        \
+  X(clctBxn, clct_bxn, "CLCT0/1 BXN after drift (2 bits)")                                                             \
+  X(clctSyncErr, clct_sync_err, "CLCT BX0 sync error")                                                                 \
+  X(clct0InvalidPattern, clct0Invalid, "CLCT0 had an invalid pattern after drift")                                     \
+  X(clct1InvalidPattern, clct1Invalid, "CLCT1 had an invalid pattern after drift")                                     \
+  X(clct1Busy, clct1Busy, "second CLCT busy (logic error indicator)")                                                  \
+  X(parityErrCfebRam, parity_err_cfeb_ram, "CFEB RAM parity error of CFEBs 4:0, latched (6:5: parityErrCfebRamHigh)")  \
+  X(parityErrGemRpcMini,                                                                                               \
+    parity_err_rpc,                                                                                                    \
+    "GEM, RPC or miniscope RAM parity error, latched (CMSSW name parity_err_rpc)")                                     \
+  X(parityErrSummary, parity_err_summary, "parity error summary, latched")                                             \
+  X(alct0Valid, alct0Valid, "ALCT0 valid")                                                                             \
+  X(alct0Quality, alct0Quality, "ALCT0 quality (2 bits)")                                                              \
+  X(alct0Amu, alct0Amu, "ALCT0 accelerator-muon flag")                                                                 \
+  X(alct0Key, alct0Key, "ALCT0 key wire group")                                                                        \
+  X(alctPretrigWin, alct_pretrig_win, "position of the ALCT in the CLCT pre-trigger window (formats 4-6)")             \
+  X(clct1Slope, clct1_slope, "CLCT1 CCLUT slope magnitude (formats 7-9)")                                              \
+  X(alct1Valid, alct1Valid, "ALCT1 valid")                                                                             \
+  X(alct1Quality, alct1Quality, "ALCT1 quality (2 bits)")                                                              \
+  X(alct1Amu, alct1Amu, "ALCT1 accelerator-muon flag")                                                                 \
+  X(alct1Key, alct1Key, "ALCT1 key wire group")                                                                        \
+  X(driftDelay, drift_delay, "CLCT drift delay (configuration)")                                                       \
+  X(bcbReadEnable, bcb_read_enable, "blocked CFEB bits in the readout (configuration)")                                \
+  X(hsLayerTrig, hs_layer_trig, "layer-mode trigger")                                                                  \
+  X(alctBxn, alctBXN, "ALCT0/1 BXN (5 bits; formats 4-6)")                                                             \
+  X(hmtNhitsHigh, hmt_nhits_bits_high, "HMT number of hits, bits 6:2 (formats 7-9)")                                   \
+  X(alctEccErr, alct_ecc_err, "ALCT trigger-path ECC error code (2 bits)")                                             \
+  X(cfebBadbitsFound, cfeb_badbits_found, "CFEBs 4:0 with at least one bad bit (6:5: cfebBadbitsFoundHigh)")           \
+  X(cfebBadbitsBlocked, cfeb_badbits_blocked, "a CFEB had bad bits that were blocked")                                 \
+  X(alctCfgDone, alctCfg, "ALCT FPGA configuration done")                                                              \
+  X(bx0Match, bx0_match, "ALCT BX0 and CLCT BX0 match")                                                                \
+  X(mpcDelay, MPCDelay, "MPC transmit delay (configuration)")                                                          \
+  X(mpcAccept, MPCAccept, "MPC accept response for the two LCTs (2 bits)")                                             \
+  X(cfebsEnabled, CFEBsEnabled, "CFEBs 4:0 enabled for triggering (6:5: cfebsEnabledHigh)")                            \
+  X(rpcList,                                                                                                           \
+    RPCList,                                                                                                           \
+    "RPCs in the readout (formats 4-7; word 36 holds the RPC fields only when the GEM readout is disabled, a "         \
+    "register not in the header)")                                                                                     \
+  X(nRPCs,                                                                                                             \
+    NRPCs,                                                                                                             \
+    "number of RPCs in the readout (formats 4-7; word 36 holds the RPC fields only when the GEM readout is disabled, " \
+    "a register not in the header)")                                                                                   \
+  X(rpcEnable,                                                                                                         \
+    RPCEnable,                                                                                                         \
+    "RPC readout enabled (configuration; formats 4-7; word 36 holds the RPC fields only when the GEM readout is "      \
+    "disabled, a register not in the header)")                                                                         \
+  X(fifoTbinsRPC,                                                                                                      \
+    fifo_tbins_rpc,                                                                                                    \
+    "RPC FIFO time bins read out (configuration; formats 4-7; word 36 holds the RPC fields only when the GEM readout " \
+    "is disabled, a register not in the header)")                                                                      \
+  X(fifoPretrigRPC,                                                                                                    \
+    fifo_pretrig_rpc,                                                                                                  \
+    "RPC FIFO time bins before the pre-trigger (configuration; formats 4-7; word 36 holds the RPC fields only when "   \
+    "the GEM readout is disabled, a register not in the header)")                                                      \
+  X(gemEnabledFibers,                                                                                                  \
+    gem_enabled_fibers_,                                                                                               \
+    "GEM fibers enabled for readout (4 bits, configuration; formats 8, 9; word 36 holds the GEM fields only when the " \
+    "GEM readout is enabled, a register not in the header)")                                                           \
+  X(gemZeroSuppression,                                                                                                \
+    gem_zero_suppression_,                                                                                             \
+    "GEM zero suppression enabled (configuration; formats 8, 9; word 36 holds the GEM fields only when the GEM "       \
+    "readout is enabled, a register not in the header)")                                                               \
+  X(fifoTbinsGEM,                                                                                                      \
+    fifo_tbins_gem_,                                                                                                   \
+    "GEM FIFO time bins read out (configuration; formats 8, 9; word 36 holds the GEM fields only when the GEM "        \
+    "readout is enabled, a register not in the header)")                                                               \
+  X(fifoPretrigGEM,                                                                                                    \
+    fifo_pretrig_gem_,                                                                                                 \
+    "GEM FIFO time bins before the pre-trigger (configuration; formats 8, 9; word 36 holds the GEM fields only when "  \
+    "the GEM readout is enabled, a register not in the header)")                                                       \
+  X(rWrBufAdr, r_wr_buf_adr, "buffer RAM write address at the pre-trigger (11 bits)")                                  \
+  X(rWrBufReady, r_wr_buf_ready, "write buffer ready at the pre-trigger")                                              \
+  X(wrBufReady, wr_buf_ready, "write buffer ready at readout")                                                         \
+  X(bufQFull, buf_q_full, "all raw-hits RAM in use")                                                                   \
+  X(bufQEmpty, buf_q_empty, "no fences left on the buffer stack")                                                      \
+  X(rBufFenceDist, r_buf_fence_dist, "distance to the first fence address at the pre-trigger (11 bits)")               \
+  X(bufQOvfErr, buf_q_ovf_err, "buffer stack: push when full")                                                         \
+  X(bufQUdfErr, buf_q_udf_err, "buffer stack: pop when empty")                                                         \
+  X(bufQAdrErr, buf_q_adr_err, "buffer stack: popped fence address differs from the release address")                  \
+  X(bufStalled, buf_stalled, "buffer write pointer hit a fence and stalled (latched)")                                 \
+  X(bufFenceCnt, buf_fence_cnt, "number of fences in the fence RAM (12 bits)")                                         \
+  X(reverseHsCsc, reverse_hs_csc, "reversed staggered CSC, non-ME1 (configuration)")                                   \
+  X(reverseHsMe1a, reverse_hs_me1a, "ME1a half-strip order reversed (configuration)")                                  \
+  X(reverseHsMe1b, reverse_hs_me1b, "ME1b half-strip order reversed (configuration)")                                  \
+  X(activeCFEBsHigh, activeCFEBs_2, "active-CFEB list sent to the DMB, bits 6:5")                                      \
+  X(readCFEBsHigh, readCFEBs_2, "CFEBs read out, bits 6:5")                                                            \
+  X(parityErrCfebRamHigh,                                                                                              \
+    cfeb_badbits_found_2,                                                                                              \
+    "CFEB RAM parity error of CFEBs 6:5, word 40 bits 5:4 (CMSSW name cfeb_badbits_found_2)")                          \
+  X(cfebBadbitsFoundHigh,                                                                                              \
+    parity_err_cfeb_ram_2,                                                                                             \
+    "CFEBs 6:5 with at least one bad bit, word 40 bits 7:6 (CMSSW name parity_err_cfeb_ram_2)")                        \
+  X(cfebsEnabledHigh, CFEBsEnabled_2, "CFEBs 6:5 enabled for triggering")                                              \
+  X(bufFenceCntIsPeak, buf_fence_cnt_is_peak, "the current fence count is the peak")                                   \
+  X(mxcfeb, mxcfeb, "board with 7 CFEBs (formats 4-7; OTMBs in the Run-3 format write the GEM-CSC bend enable)")       \
+  X(gemCscBendEnable, gem_csc_bend_enable, "GEM-CSC bending enabled (configuration; formats 8, 9)")                    \
+  X(trigSourceMe1aMe1b, trig_source_vec, "pre-trigger was ME1a only (bit 0) or ME1b only (bit 1)")                     \
+  X(tmbTrigPulse, tmb_trig_pulse, "TMB trigger pulse coincident with the readout push")                                \
+  X(tmbAllowAlct, tmb_allow_alct, "ALCT-only TMB trigger allowed (configuration; formats 4-6)")                        \
+  X(tmbAllowClct, tmb_allow_clct, "CLCT-only TMB trigger allowed (configuration; formats 4-6)")                        \
+  X(tmbAllowMatch, tmb_allow_match, "ALCT-CLCT match trigger allowed (configuration; formats 4-6)")                    \
+  X(tmbAllowAlctRo, tmb_allow_alct_ro, "ALCT-only readout allowed (configuration; formats 4-6)")                       \
+  X(tmbAllowClctRo, tmb_allow_clct_ro, "CLCT-only readout allowed (configuration; formats 4-6)")                       \
+  X(tmbAllowMatchRo, tmb_allow_match_ro, "ALCT-CLCT match readout allowed (configuration; formats 4-6)")               \
+  X(run3TrigDf, run3_trig_df, "Run-3 trigger data format (configuration; formats 7-9)")                                \
+  X(gemEnable, gem_enable, "GEM enabled (configuration; formats 7-9)")                                                 \
+  X(hmtMatchWin, hmt_match_win, "position of the HMT in its match window (4 bits; formats 7-9)")                       \
+  X(tmbAlctOnlyRo, tmb_alct_only_ro, "only the ALCT triggered (non-triggering readout)")                               \
+  X(tmbClctOnlyRo, tmb_clct_only_ro, "only the CLCT triggered (non-triggering readout)")                               \
+  X(tmbMatchRo, tmb_match_ro, "ALCT and CLCT matched in time (non-triggering readout)")                                \
+  X(tmbTrigKeep, tmb_trig_keep, "triggering readout event")                                                            \
+  X(tmbNonTrigKeep, tmb_non_trig_keep, "non-triggering readout event")                                                 \
+  X(lyrThreshPretrig, lyr_thresh_pretrig, "layer pre-trigger threshold (configuration; formats 4, 5)")                 \
+  X(layerTrigEn, layer_trig_en, "layer trigger mode enabled (configuration; formats 4, 5)")                            \
+  X(cathodeHmt, cathode_hmt, "cathode HMT bits (2; formats 6-9)")                                                      \
   X(anodeHmt, anode_hmt, "anode HMT bits (2; OTMBs: the ALCT BXN bits 2:1 of the Run-3 ALCT format; formats 6-9)")
 
 #define GCN_TMB_ALL(X, X2) GCN_TMB_COLUMNS(X, X2) GCN_TMB_COLUMNS_27(X, X2)
@@ -519,7 +547,8 @@ namespace {
   const char* const kFullHeaderMatchDoc =
       "words 27-42 of this row: 0 = the second decoding of the raw data has exactly one readout of the chamber, with "
       "words 0-26 and the trailer equal to the status digi's (words 27-42 filled); 1 = no readout of the chamber; 2 = "
-      "more than one; 3 = one, but words 0-26 or the trailer differ; 4 = the header has 27 words (2006 format)";
+      "more than one readout or status digi of the chamber; 3 = one, but words 0-26 or the trailer differ; 4 = the "
+      "header has 27 words (2006 format)";
 
 }  // namespace
 
@@ -572,14 +601,24 @@ TMBHeaderTableProducer::TMBHeaderTableProducer(const edm::ParameterSet& ps)
       throw cms::Exception("LogicError") << "TMBHeaderTableProducer: column " << kColumns[i].name
                                          << " is in no header format";
   Names names{};
-  for (const Names& n : {namesPresent<CSCTMBHeader2013>(),
-                         namesPresent<CSCTMBHeader2020_Run2>(),
-                         namesPresent<CSCTMBHeader2020_TMB>(),
-                         namesPresent<CSCTMBHeader2020_CCLUT>(),
-                         namesPresent<CSCTMBHeader2020_GEM>(),
-                         namesPresent<CSCTMBHeader2020_GEM_Run3b>()})
-    for (unsigned i = 0; i < kNDecoded; ++i)
+  const std::array<Names, 6> perFormat = {{namesPresent<CSCTMBHeader2013>(),
+                                           namesPresent<CSCTMBHeader2020_Run2>(),
+                                           namesPresent<CSCTMBHeader2020_TMB>(),
+                                           namesPresent<CSCTMBHeader2020_CCLUT>(),
+                                           namesPresent<CSCTMBHeader2020_GEM>(),
+                                           namesPresent<CSCTMBHeader2020_GEM_Run3b>()}};
+  for (int code = 4; code <= 9; ++code) {
+    // the decoder gives a value exactly for the columns whose field name the format has
+    const Names& n = perFormat[code - 4];
+    std::array<unsigned short, kHeaderWords> buf{};
+    const Values v = decodeFormat(code, buf.data());
+    for (unsigned i = 0; i < kNDecoded; ++i) {
+      if ((v[i] != -1) != (n[i] != 0))
+        throw cms::Exception("LogicError") << "TMBHeaderTableProducer: column " << kColumns[i].name << " of format "
+                                           << code << ": decoded presence differs from its field names";
       names[i] |= n[i];
+    }
+  }
   for (unsigned i = 0; i < kNDecoded; ++i)
     if (names[i] != kExpectedNames[i])
       throw cms::Exception("LogicError") << "TMBHeaderTableProducer: a field name of column " << kColumns[i].name
@@ -592,6 +631,12 @@ TMBHeaderTableProducer::TMBHeaderTableProducer(const edm::ParameterSet& ps)
 void TMBHeaderTableProducer::produce(edm::StreamID, edm::Event& event, const edm::EventSetup& setup) const {
   const auto digiHandle = event.getHandle(token_);
   const auto& digis = *digiHandle;
+  // the unpacker's untracked settings are in the configuration of the current process only (files keep the tracked
+  // part): the status digis must be made in this job
+  if (digiHandle.provenance()->processName() != moduleDescription().processName())
+    throw cms::Exception("Configuration")
+        << "TMBHeaderTableProducer: " << label_ << " was made by process " << digiHandle.provenance()->processName()
+        << ", not by this job: rerun the CSC unpacker (UnpackStatusDigis = True)";
   const UnpackerSettings unpacker =
       unpackerSettings(edm::parameterSet(digiHandle.provenance()->stable(), event.processHistory()));
   if (!(unpacker.raw == rawTag_))
@@ -608,6 +653,10 @@ void TMBHeaderTableProducer::produce(edm::StreamID, edm::Event& event, const edm
     int fullHeaderMatch;
     Values values;
   };
+  std::map<CSCDetId, unsigned> digisPerChamber;
+  for (auto detUnit = digis.begin(); detUnit != digis.end(); ++detUnit)
+    for (auto digi = (*detUnit).second.first; digi != (*detUnit).second.second; ++digi)
+      ++digisPerChamber[(*detUnit).first];
   std::vector<Row> rows;
   for (auto detUnit = digis.begin(); detUnit != digis.end(); ++detUnit) {
     const auto& range = (*detUnit).second;
@@ -623,7 +672,7 @@ void TMBHeaderTableProducer::produce(edm::StreamID, edm::Event& event, const edm
       const unsigned nReadouts = readout == readouts.end() ? 0 : readout->second.size();
       if (nReadouts == 0)
         r.fullHeaderMatch = 1;
-      else if (nReadouts > 1)
+      else if (nReadouts > 1 || digisPerChamber.at(r.chamber) > 1)
         r.fullHeaderMatch = 2;
       else {
         const Readout& ro = readout->second.front();

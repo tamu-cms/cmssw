@@ -18,7 +18,8 @@
 #   from Configuration.AlCa.GlobalTag import GlobalTag
 #   process.GlobalTag = GlobalTag(process.GlobalTag, "<GT of the runs>", "")
 #   process.load("L1Trigger.GemCscNano.GemCscNano_cff")
-#   process.cscLCTRecoMuonTable.lcts = "cscTriggerPrimitiveDigis"  # TMB level (L1TdeCSCTPG uses :MPCSORTED)
+#   process.cscLCTRecoMuonTable.lcts = "cscTriggerPrimitiveDigis"  # TMB level (L1TdeCSCTPG uses :MPCSORTED);
+#                                                    # in data the LCT-EMTFLCT match then pairs emulated and EMTF LCTs
 #   process.cscLCTRecoMuonTable.alcts = "cscTriggerPrimitiveDigis"  # or keep the unpacked ALCTs and CLCTs: the
 #   process.cscLCTRecoMuonTable.clcts = "cscTriggerPrimitiveDigis"  # table docs name the collection used
 #   process.muonCSCDigis.UnpackStatusDigis = True  # the TMB headers of the TMBHeader table

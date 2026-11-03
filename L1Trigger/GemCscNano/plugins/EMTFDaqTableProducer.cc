@@ -14,7 +14,8 @@
 // readout), so rows are matched by exact equality of their stored identity columns endcap, station, ring, chamber,
 // es (the key eighth-strip, which contains the half-strip) and wg; no tolerance. Rows without a partner or with
 // several are flagged, never dropped: nLCTMatch / nEMTFLCTMatch count the partners, the index is set only for a
-// one-to-one pair, lctDiff lists the compared fields that differ in it.
+// one-to-one pair, lctDiff lists the compared fields that differ in it. BX is not compared (the CSC LCT bx is 1 bit). With
+// the emulator recipe (LCT from cscTriggerPrimitiveDigis) the match compares emulated LCTs with the EMTF data LCTs.
 
 #include "DataFormats/CSCDigi/interface/CSCCorrelatedLCTDigiCollection.h"
 #include "DataFormats/L1TMuon/interface/EMTFHit.h"
@@ -387,7 +388,8 @@ void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::
   lctTable->addColumn<int16_t>(
       "lctIdx",
       lctIdx,
-      "row in LCT of the one-to-one partner (nLCTMatch = 1 and that LCT's nEMTFLCTMatch = 1), else -1");
+      "row in LCT of the one-to-one partner (nLCTMatch = 1 and that LCT's nEMTFLCTMatch = 1), else -1; bx is not "
+      "compared: the pair may be at another EMTF bx (EMTFLCT_bx)");
   lctTable->addColumn<int16_t>(
       "lctDiff",
       lctDiff,
@@ -415,7 +417,7 @@ void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::
 void EMTFDaqTableProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("src")->setComment("the EMTF unpacker (EMTFHitCollection, EMTFTrackCollection, LCT digis)");
-  desc.add<edm::InputTag>("lctTable", edm::InputTag("cscLCTRecoMuonTable", "lct"))
+  desc.add<edm::InputTag>("lctTable")
       ->setComment("the LCT FlatTable (main table named LCT) the EMTFLCT rows are matched to");
   descriptions.add("emtfDaqTableProducer", desc);
 }
