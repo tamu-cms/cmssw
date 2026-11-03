@@ -1,6 +1,7 @@
 // A copy of an edm::TriggerResults with only the selected paths: those whose name starts with `prefix` and whose rest
-// (after the prefix) matches the regular expression `select` and not `veto` (ECMAScript). The statuses are copied and
-// the names are stored in the product, so NanoAODOutputModule writes them as <name> bits (version suffix dropped).
+// (after the prefix, without a _v<N> version suffix) matches the regular expression `select` and not `veto`
+// (ECMAScript; an empty veto vetoes nothing). The statuses are copied and the names are stored in the product, so
+// NanoAODOutputModule writes them as <name> bits (version suffix dropped).
 
 #include "DataFormats/Common/interface/HLTGlobalStatus.h"
 #include "DataFormats/Common/interface/TriggerResults.h"
@@ -11,6 +12,7 @@
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ParameterSet/interface/ParameterSetDescription.h"
+#include "FWCore/Utilities/interface/EDMException.h"
 #include "FWCore/Utilities/interface/InputTag.h"
 
 #include <memory>
@@ -29,7 +31,9 @@ private:
   const edm::EDGetTokenT<edm::TriggerResults> token_;
   const std::string prefix_;
   const std::regex select_;
+  const bool hasVeto_;
   const std::regex veto_;
+  const std::regex version_{"_v[0-9]+$"};
   // the selection of the last trigger menu seen (names change only with the menu)
   std::vector<std::string> lastNames_;
   std::vector<unsigned int> kept_;
@@ -39,7 +43,11 @@ TriggerResultsSelector::TriggerResultsSelector(const edm::ParameterSet& ps)
     : token_(consumes(ps.getParameter<edm::InputTag>("src"))),
       prefix_(ps.getParameter<std::string>("prefix")),
       select_(ps.getParameter<std::string>("select")),
+      hasVeto_(!ps.getParameter<std::string>("veto").empty()),
       veto_(ps.getParameter<std::string>("veto")) {
+  // an empty regex matches every name
+  if (ps.getParameter<std::string>("select").empty())
+    throw edm::Exception(edm::errors::Configuration) << "TriggerResultsSelector: select must not be empty";
   produces<edm::TriggerResults>();
 }
 
@@ -47,8 +55,10 @@ void TriggerResultsSelector::fillDescriptions(edm::ConfigurationDescriptions& de
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("src", edm::InputTag("TriggerResults", "", "HLT"))->setComment("input edm::TriggerResults");
   desc.add<std::string>("prefix", "HLT_")->setComment("only names with this prefix are considered");
-  desc.add<std::string>("select", "")->setComment("ECMAScript regex the name after the prefix must match");
-  desc.add<std::string>("veto", "")->setComment("ECMAScript regex the name after the prefix must not match");
+  desc.add<std::string>("select")->setComment(
+      "ECMAScript regex the name after the prefix (without _v<N>) must match; must not be empty");
+  desc.add<std::string>("veto")->setComment(
+      "ECMAScript regex the name after the prefix (without _v<N>) must not match; empty: no veto");
   descriptions.add("triggerResultsSelector", desc);
 }
 
@@ -62,8 +72,8 @@ void TriggerResultsSelector::produce(edm::Event& event, const edm::EventSetup&) 
       const std::string& name = lastNames_[i];
       if (name.compare(0, prefix_.size(), prefix_) != 0)
         continue;
-      const std::string rest = name.substr(prefix_.size());
-      if (std::regex_search(rest, select_) && !std::regex_search(rest, veto_))
+      const std::string rest = std::regex_replace(name.substr(prefix_.size()), version_, "");
+      if (std::regex_search(rest, select_) && !(hasVeto_ && std::regex_search(rest, veto_)))
         kept_.push_back(i);
     }
   }

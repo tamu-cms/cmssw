@@ -68,21 +68,23 @@ gemCscNanoGenFilter = cms.EDFilter("GenParticleSelector", src=cms.InputTag("genP
 
 # As miniAOD makes slimmedPatTrigger (switchOnTriggerStandAlone, packed path names), then the central TrigObj table.
 patTrigger = _patTrigger.clone(onlyStandAlone=True, packTriggerPathNames=cms.bool(True))
-# TrigObj: the HLT muon objects only (the central muon selection), every one of them (not only those passing a bit),
-# with one filter bit per single-muon path: the object passed the path's last filter (the user's definition,
-# 2026-11-03). Tag and probe on HLT_IsoMu24 uses bit 1.
+# TrigObj: the HLT muon objects only (the central muon selection on the objects of saveTags filters), every one of
+# them (not only those passing a bit), with one filter bit per single-muon path: the path accepted the event and the
+# object is in its last filter (PATTriggerProducer: pathFired && lastFilter). Tag and probe on HLT_IsoMu24 uses bit 1.
 GEMCSCNANO_MUON_PATHS = ["HLT_IsoMu20", "HLT_IsoMu24", "HLT_IsoMu27", "HLT_Mu50", "HLT_Mu55", "HLT_CascadeMu100",
                          "HLT_HighPtTkMu100"]
 triggerObjectTable = _triggerObjectTable.clone(selections=cms.PSet(Muon=_triggerObjectTable.selections.Muon.clone(
     skipObjectsNotPassingQualityBits=False,
-    qualityBits=cms.VPSet(*[mksel("path('%s_v*', 1, 0)" % p, "last filter of " + p) for p in GEMCSCNANO_MUON_PATHS]))))
+    qualityBits=cms.VPSet(*[mksel("path('%s_v*', 1, 0)" % p, p + " accepted, object in its last filter")
+                            for p in GEMCSCNANO_MUON_PATHS]))))
 
-# HLT and L1 bits: the muon paths and seeds only (the user's definition, 2026-11-03): a name (after HLT_ or L1_) with a
-# muon token (Mu not followed by a lower-case letter, at the start, after a non-letter or after Iso, Double, Triple,
-# Quad, Di, Trk, Tk, L1, L2, L3, Single, Cascade or HighPtTk; or Muon, MuShower, Csc, CSC) and without another object.
-_muonToken = ("(^|[^A-Za-z])(Iso|Double|Triple|Quad|Di|Trk|Tk|L1|L2|L3|Single|Cascade|HighPtTk)?Mu(?![a-z])"
-              "|Muon|MuShower|Csc|CSC")
-_otherObject = "Ele|EG(?!_)|Photon|Pho|Jet|HT|MET|ETM|Tau|PNet|BTag|Btag|PFMHT|DisplacedSingleJet|Electron"
+# HLT and L1 bits: the muon paths and seeds only. A name (after HLT_ or L1_, without _v<N>) is kept if it names a
+# muon object (Mu or mu not followed by a lower-case letter, Muon, muon as in Dimuon, Csc, CSC, Cosmic, cosmic) and no
+# other physics object: electron or e/gamma (Ele, EG not preceded by an upper-case letter: not the NEG of
+# SingleMu22_BMTF_NEG), photon, jet, HT, MET, ETM, PNet, b tag, hadronic tau (Tau, Prong; Tau in a name with Tau3Mu or
+# Tau3mu is the three-muon candidate and is kept).
+_muonToken = "[Mm]u(?![a-z])|[Mm]uon|Csc|CSC|[Cc]osmic"
+_otherObject = "Ele|(^|[^A-Z])EG|Photon|Pho|Jet|HT|MET|ETM|PNet|BTag|Btag|Prong|^(?!.*Tau3[Mm]u).*Tau"
 gemCscNanoHLTBits = triggerResultsSelector.clone(src=cms.InputTag("TriggerResults", "", "HLT"), prefix="HLT_",
                                                  select=_muonToken, veto=_otherObject)
 # the central l1bits (final decision), without the unprefireable-event bits (not muon seeds)

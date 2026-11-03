@@ -27,8 +27,7 @@
 #   process.out = <the NanoAODOutputModule of this file>
 #   process.e = cms.EndPath(process.out, process.gemCscNanoTask)
 #   process.schedule.extend([process.gemCscNanoMuonPath, process.e])
-# (run on 50 events at 9a43f6e2322, before the ALCT and CLCT tables; emulator digis differ from unpacked ones in
-# bx and fullBX, see the column docs)
+# (emulator digis differ from unpacked ones in bx and fullBX, see the column docs)
 # (the base cfg's era is Run3; the HLT objects and bits are read from the process "HLT", the cff default);
 # run it with unpack=True l1=True run3=True runCCLUTOTMB=True runME11ILT=True useGEMAlignment=True
 # saveEdmOutput=False [use6BitGEMCSCBendingAngle=True] inputFiles=<file>: without run3=True the cfg emulates Run-2
