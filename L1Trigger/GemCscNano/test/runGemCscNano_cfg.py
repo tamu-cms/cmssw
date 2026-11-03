@@ -21,6 +21,7 @@
 #   process.cscLCTRecoMuonTable.lcts = "cscTriggerPrimitiveDigis"  # TMB level (L1TdeCSCTPG uses :MPCSORTED)
 #   process.cscLCTRecoMuonTable.alcts = "cscTriggerPrimitiveDigis"  # or keep the unpacked ALCTs and CLCTs: the
 #   process.cscLCTRecoMuonTable.clcts = "cscTriggerPrimitiveDigis"  # table docs name the collection used
+#   process.muonCSCDigis.UnpackStatusDigis = True  # the TMB headers of the TMBHeader table
 #   from L1Trigger.GemCscNano.GemCscNano_cff import setGemCscNanoSelection
 #   setGemCscNanoSelection(process)  # after any change of muonCut or gemCscNanoSelection
 #   process.gemCscNanoMuonPath = cms.Path(process.gemCscNanoMuonFilter)  # the event preselection
@@ -77,6 +78,7 @@ process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(options.maxEven
 
 process.load("L1Trigger.GemCscNano.GemCscNano_cff")
 process.load("EventFilter.CSCRawToDigi.cscUnpacker_cfi")
+process.muonCSCDigis.UnpackStatusDigis = True  # the TMB headers (TMBHeader table); adds products only
 process.cscLCTRecoMuonTable.muonCut = options.muonCut
 from L1Trigger.GemCscNano.GemCscNano_cff import setGemCscNanoSelection
 setGemCscNanoSelection(process)

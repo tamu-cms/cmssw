@@ -3,6 +3,7 @@
 <use name="DataFormats/CSCDigi"/>
 <use name="DataFormats/CSCRecHit"/>
 <use name="DataFormats/HepMCCandidate"/>
+<use name="EventFilter/CSCRawToDigi"/>
 <use name="DataFormats/L1TMuon"/>
 <use name="DataFormats/Math"/>
 <use name="DataFormats/MuonDetId"/>

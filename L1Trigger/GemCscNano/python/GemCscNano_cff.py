@@ -14,6 +14,8 @@
 #   L1Mu                                the central table, every BX of the uGMT readout
 #   PV                                  primaryVertexTable: the central PV count columns and main PV, from RECO
 #                                       offlinePrimaryVertices
+#   TMBHeader, TMBHeaderRaw             tmbHeaderTable: the (O)TMB DAQ header of each chamber readout, words 0-26
+#                                       (CSCTMBStatusDigi keeps no more); needs muonCSCDigis.UnpackStatusDigis = True
 #   EMTFMuon                            emtfMuonTable: the EMTF output tracks as the uGMT receives them
 #                                       (gmtStage2Digis:EMTF), every BX
 #   EMTFHit, EMTFTrack, EMTFLCT         emtfDaqTable on the EMTF unpacker emtfStage2Digis (gemCscNanoDataTask: data
@@ -33,6 +35,7 @@ from EventFilter.L1TRawToDigi.emtfStage2Digis_cfi import emtfStage2Digis
 from L1Trigger.GemCscNano.cscLCTSimTrackTableProducer_cfi import cscLCTSimTrackTableProducer
 from L1Trigger.GemCscNano.emtfDaqTableProducer_cfi import emtfDaqTableProducer
 from L1Trigger.GemCscNano.emtfMuonTableProducer_cfi import emtfMuonTableProducer
+from L1Trigger.GemCscNano.tmbHeaderTableProducer_cfi import tmbHeaderTableProducer
 from L1Trigger.GemCscNano.primaryVertexTableProducer_cfi import primaryVertexTableProducer
 from L1Trigger.GemCscNano.triggerResultsSelector_cfi import triggerResultsSelector
 from PhysicsTools.NanoAOD.genparticles_cff import finalGenParticles, genIso, genParticleTable
@@ -107,6 +110,8 @@ gemCscNanoL1Bits = triggerResultsSelector.clone(src="l1bits", prefix="L1_", sele
 # is its copy, same order: PATVertexSlimmer.cc), with the central good-vertex cut.
 primaryVertexTable = primaryVertexTableProducer.clone(src="offlinePrimaryVertices", goodPvCut=_vertexTable.goodPvCut,
                                                       name="PV")
+# TMB header: the unpacker's CSCTMBStatusDigis (it makes them only with UnpackStatusDigis = True).
+tmbHeaderTable = tmbHeaderTableProducer.clone(src=cms.InputTag("muonCSCDigis", "MuonCSCTMBStatusDigi"))
 # EMTF: the output tracks as the uGMT reads them out (data and MC); the EMTF DAQ readout (data only).
 emtfMuonTable = emtfMuonTableProducer.clone(src=cms.InputTag("gmtStage2Digis", "EMTF"))
 emtfDaqTable = emtfDaqTableProducer.clone(src="emtfStage2Digis")
@@ -126,6 +131,7 @@ gemCscNanoTask = cms.Task(
     l1MuTable,
     primaryVertexTable,
     emtfMuonTable,
+    tmbHeaderTable,
 )
 
 # Data only: the EMTF readout (FEDs 1384, 1385), not packed in MC RAW.
