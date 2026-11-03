@@ -13,6 +13,8 @@
 //                    the GEM rechits reco matched there.
 // No event selection is applied here.
 
+#include "L1Trigger/GemCscNano/interface/CSCLCTTable.h"
+#include "L1Trigger/GemCscNano/interface/TableColumns.h"
 #include "CommonTools/Utils/interface/StringCutObjectSelector.h"
 #include "DataFormats/CSCDigi/interface/CSCALCTDigiCollection.h"
 #include "DataFormats/CSCDigi/interface/CSCCLCTDigiCollection.h"
@@ -55,19 +57,7 @@
 
 namespace {
 
-  // One column computed from each row.
-  template <typename T, typename Row, typename F>
-  void addColumn(nanoaod::FlatTable& table,
-                 const std::string& name,
-                 const std::vector<Row>& rows,
-                 F value,
-                 const std::string& doc) {
-    std::vector<T> v;
-    v.reserve(rows.size());
-    for (const Row& r : rows)
-      v.push_back(value(r));
-    table.addColumn<T>(name, v, doc);
-  }
+  using gemcscnano::addColumn;
 
   // One digi of a CSC digi collection with its detector unit, in collection order.
   template <typename D>
@@ -226,71 +216,12 @@ void CSCLCTRecoMuonTableProducer::produce(edm::Event& event, const edm::EventSet
   if (vertices.empty())
     throw cms::Exception("ProductNotValid") << "empty vertex collection: Muon_dxy and Muon_dz need a primary vertex";
   const reco::Vertex::Point& pv = vertices.front().position();
-  struct LCTRow {
-    CSCDetId chamber;
-    const CSCCorrelatedLCTDigi* lct;
-  };
-  std::vector<LCTRow> lcts;
-  const auto& lctCollection = event.get(lctToken_);
-  for (auto detUnit = lctCollection.begin(); detUnit != lctCollection.end(); ++detUnit) {
-    const auto& range = (*detUnit).second;
-    for (auto lct = range.first; lct != range.second; ++lct)
-      lcts.push_back({(*detUnit).first, &*lct});
-  }
-  checkIndexRange(lcts.size(), "LCTs");
+  auto lctTable = gemcscnano::makeLCTTable(
+      event.get(lctToken_),
+      "LCT",
+      "CSC LCTs: every digi of " + lctsLabel_ + ", in collection order (detector unit, then digi)");
+  checkIndexRange(lctTable->nRows(), "LCTs");
   checkIndexRange(muons.size(), "muons");
-
-  auto lctTable = std::make_unique<nanoaod::FlatTable>(lcts.size(), "LCT", false);
-  lctTable->setDoc("CSC LCTs: every digi of " + lctsLabel_ + ", in collection order (detector unit, then digi)");
-  addColumn<int16_t>(*lctTable, "endcap", lcts, [](const LCTRow& m) { return m.chamber.zendcap(); }, "+1 or -1");
-  addColumn<bool>(
-      *lctTable, "valid", lcts, [](const LCTRow& m) { return m.lct->isValid(); }, "CSCCorrelatedLCTDigi::isValid");
-  addColumn<int16_t>(*lctTable, "station", lcts, [](const LCTRow& m) { return m.chamber.station(); }, "station");
-  addColumn<int16_t>(*lctTable, "ring", lcts, [](const LCTRow& m) { return m.chamber.ring(); }, "ring (ME1/1 LCTs: 1)");
-  addColumn<int16_t>(*lctTable, "chamber", lcts, [](const LCTRow& m) { return m.chamber.chamber(); }, "chamber");
-  addColumn<int16_t>(
-      *lctTable,
-      "hs",
-      lcts,
-      [](const LCTRow& m) { return m.lct->getStrip(); },
-      "key half-strip, 0-based (ME1/1: ME1b 0-127, ME1a 128-223)");
-  addColumn<int16_t>(
-      *lctTable, "es", lcts, [](const LCTRow& m) { return m.lct->getStrip(8); }, "key eighth-strip, getStrip(8)");
-  addColumn<int16_t>(
-      *lctTable, "wg", lcts, [](const LCTRow& m) { return m.lct->getKeyWG(); }, "key wire group, 0-based");
-  addColumn<int16_t>(*lctTable, "quality", lcts, [](const LCTRow& m) { return m.lct->getQuality(); }, "quality");
-  addColumn<int16_t>(*lctTable, "pattern", lcts, [](const LCTRow& m) { return m.lct->getPattern(); }, "Run-2 pattern");
-  addColumn<int16_t>(
-      *lctTable,
-      "run3Pattern",
-      lcts,
-      [](const LCTRow& m) { return m.lct->getRun3Pattern(); },
-      "Run-3 pattern (0 for Run3-b unpacked data)");
-  addColumn<int16_t>(
-      *lctTable, "slope", lcts, [](const LCTRow& m) { return m.lct->getSlope(); }, "slope, getSlope() (4 bits)");
-  addColumn<int16_t>(
-      *lctTable,
-      "slope6",
-      lcts,
-      [](const LCTRow& m) { return m.lct->getSlopeEx(6); },
-      "slope at 6-bit resolution, getSlopeEx(6)");
-  addColumn<int16_t>(*lctTable, "bend", lcts, [](const LCTRow& m) { return m.lct->getBend(); }, "bend (L/R)");
-  addColumn<int16_t>(
-      *lctTable, "bx", lcts, [](const LCTRow& m) { return m.lct->getBX(); }, "BX (1 bit in unpacked data)");
-  addColumn<int16_t>(
-      *lctTable, "trknmb", lcts, [](const LCTRow& m) { return m.lct->getTrknmb(); }, "track number (1 or 2)");
-  addColumn<int16_t>(
-      *lctTable,
-      "type",
-      lcts,
-      [](const LCTRow& m) { return m.lct->getType(); },
-      "LCT type (CSCCorrelatedLCTDigi::Type; emulator only)");
-  addColumn<int16_t>(
-      *lctTable,
-      "gemLayer",
-      lcts,
-      [](const LCTRow& m) { return m.lct->getGemLayerUsedForSlopeComputation(); },
-      "GEM layer used for the slope: emulator 1, 2, 0 = none; Run3-b unpacked data the raw 1-bit field");
 
   // ALCT and CLCT: every digi, in collection order; the accessors as stored, plus the key half-strip of a CLCT
   const auto alcts = digiRows<CSCALCTDigi>(event.get(alctToken_));

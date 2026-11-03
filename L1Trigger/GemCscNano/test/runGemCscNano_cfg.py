@@ -89,6 +89,8 @@ if options.mc:
     tasks.append(process.gemCscNanoMCTask)
     process.gemCscNanoGenPath = cms.Path(process.gemCscNanoGenFilter)
     selectEvents.append("gemCscNanoGenPath")
+else:
+    tasks.append(process.gemCscNanoDataTask)  # the EMTF readout: data only
 
 process.out = cms.OutputModule("NanoAODOutputModule",
     fileName=cms.untracked.string(options.outputFile),

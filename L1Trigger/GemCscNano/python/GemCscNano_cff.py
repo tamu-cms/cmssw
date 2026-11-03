@@ -14,6 +14,10 @@
 #   L1Mu                                the central table, every BX of the uGMT readout
 #   PV                                  primaryVertexTable: the central PV count columns and main PV, from RECO
 #                                       offlinePrimaryVertices
+#   EMTFMuon                            emtfMuonTable: the EMTF output tracks as the uGMT receives them
+#                                       (gmtStage2Digis:EMTF), every BX
+#   EMTFHit, EMTFTrack, EMTFLCT         emtfDaqTable on the EMTF unpacker emtfStage2Digis (gemCscNanoDataTask: data
+#                                       only, MC RAW has no EMTF readout): the EMTF DAQ hits, tracks and LCTs
 #   HLT_* and L1_* bits                 the muon HLT paths and L1 seeds (gemCscNanoHLTBits, gemCscNanoL1Bits),
 #                                       written by NanoAODOutputModule
 #   GenPart, SimTrack, SimTrackCSCLayer gemCscNanoMCTask (MC only; GenPart and Pileup as in the central NanoAOD)
@@ -25,7 +29,10 @@
 import FWCore.ParameterSet.Config as cms
 
 from L1Trigger.GemCscNano.cscLCTRecoMuonTableProducer_cfi import cscLCTRecoMuonTableProducer
+from EventFilter.L1TRawToDigi.emtfStage2Digis_cfi import emtfStage2Digis
 from L1Trigger.GemCscNano.cscLCTSimTrackTableProducer_cfi import cscLCTSimTrackTableProducer
+from L1Trigger.GemCscNano.emtfDaqTableProducer_cfi import emtfDaqTableProducer
+from L1Trigger.GemCscNano.emtfMuonTableProducer_cfi import emtfMuonTableProducer
 from L1Trigger.GemCscNano.primaryVertexTableProducer_cfi import primaryVertexTableProducer
 from L1Trigger.GemCscNano.triggerResultsSelector_cfi import triggerResultsSelector
 from PhysicsTools.NanoAOD.genparticles_cff import finalGenParticles, genIso, genParticleTable
@@ -100,6 +107,9 @@ gemCscNanoL1Bits = triggerResultsSelector.clone(src="l1bits", prefix="L1_", sele
 # is its copy, same order: PATVertexSlimmer.cc), with the central good-vertex cut.
 primaryVertexTable = primaryVertexTableProducer.clone(src="offlinePrimaryVertices", goodPvCut=_vertexTable.goodPvCut,
                                                       name="PV")
+# EMTF: the output tracks as the uGMT reads them out (data and MC); the EMTF DAQ readout (data only).
+emtfMuonTable = emtfMuonTableProducer.clone(src=cms.InputTag("gmtStage2Digis", "EMTF"))
+emtfDaqTable = emtfDaqTableProducer.clone(src="emtfStage2Digis")
 # Every BX of the uGMT readout: the producer clamps [minBX, maxBX] to the BXVector's range (SimpleFlatTableProducer.h).
 l1MuTable = _l1MuTable.clone(minBX=-1000, maxBX=1000)
 
@@ -115,7 +125,11 @@ gemCscNanoTask = cms.Task(
     gemCscNanoL1Bits,
     l1MuTable,
     primaryVertexTable,
+    emtfMuonTable,
 )
+
+# Data only: the EMTF readout (FEDs 1384, 1385), not packed in MC RAW.
+gemCscNanoDataTask = cms.Task(emtfStage2Digis, emtfDaqTable)
 
 # MC: the central GenPart (the miniAOD pruning genParticles -> prunedGenParticlesWithStatusOne -> prunedGenParticles,
 # then the NanoAOD finalGenParticles, with genIso on packedGenParticles), and the SimTracks with their links to GenPart
