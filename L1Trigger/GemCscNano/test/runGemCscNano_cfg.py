@@ -26,7 +26,7 @@
 #   setGemCscNanoSelection(process)  # after any change of muonCut or gemCscNanoSelection
 #   process.gemCscNanoMuonPath = cms.Path(process.gemCscNanoMuonFilter)  # the event preselection
 #   process.out = <the NanoAODOutputModule of this file>
-#   process.e = cms.EndPath(process.out, process.gemCscNanoTask)
+#   process.e = cms.EndPath(process.out, process.gemCscNanoTask, process.gemCscNanoDataTask)
 #   process.schedule.extend([process.gemCscNanoMuonPath, process.e])
 # (emulator digis differ from unpacked ones in bx and fullBX, see the column docs)
 # (the base cfg's era is Run3; the HLT objects and bits are read from the process "HLT", the cff default);

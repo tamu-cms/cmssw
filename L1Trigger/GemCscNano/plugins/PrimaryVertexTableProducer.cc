@@ -39,7 +39,7 @@ private:
 PrimaryVertexTableProducer::PrimaryVertexTableProducer(const edm::ParameterSet& ps)
     : token_(consumes(ps.getParameter<edm::InputTag>("src"))),
       goodPvCutString_(ps.getParameter<std::string>("goodPvCut")),
-      goodPvCut_(goodPvCutString_),
+      goodPvCut_(goodPvCutString_, true),
       name_(ps.getParameter<std::string>("name")) {
   produces<nanoaod::FlatTable>();
 }

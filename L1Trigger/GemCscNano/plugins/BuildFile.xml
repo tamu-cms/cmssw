@@ -3,7 +3,6 @@
 <use name="DataFormats/CSCDigi"/>
 <use name="DataFormats/CSCRecHit"/>
 <use name="DataFormats/HepMCCandidate"/>
-<use name="EventFilter/CSCRawToDigi"/>
 <use name="DataFormats/L1TMuon"/>
 <use name="DataFormats/Math"/>
 <use name="DataFormats/MuonDetId"/>
@@ -11,6 +10,7 @@
 <use name="DataFormats/NanoAOD"/>
 <use name="DataFormats/TrackReco"/>
 <use name="DataFormats/VertexReco"/>
+<use name="EventFilter/CSCRawToDigi"/>
 <use name="FWCore/Common"/>
 <use name="FWCore/Framework"/>
 <use name="FWCore/ParameterSet"/>

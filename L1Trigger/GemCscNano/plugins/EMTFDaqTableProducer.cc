@@ -1,8 +1,9 @@
 // Data only: the EMTF DAQ readout as the EMTF unpacker (emtfStage2Digis, EventFilter/L1TRawToDigi EMTFSetup) decodes
 // it. MC RAW has no EMTF readout (L1Trigger/Configuration/python/L1TDigiToRaw_cff.py: "Missing: muon EMTF").
 //   EMTFHit    every hit of the unpacker's EMTFHitCollection, in unpacking order: the CSC LCTs, GEM clusters and RPC
-//              hits each sector received (neighbor copies included; RPC/GEM hits only in sectors with a CSC hit,
-//              EMTFCollections.cc:88-102), in EMTF conventions;
+//              hits each sector received that the unpacker keeps (valid, BX within +-3, no exact duplicate: a GEM
+//              cluster differing only in layer counts as one; RPC/GEM hits only in sectors with a CSC hit,
+//              EMTFCollections.cc:12-26; neighbor copies included), in EMTF conventions;
 //   EMTFTrack  every track of the EMTFTrackCollection, with the row in EMTFHit of its hit in each station (the unpacker
 //              fills no hit index, EMTFTrack::HitIdx(): the rows are found by the hit's identity fields);
 //   EMTFLCT    the CSCCorrelatedLCTDigis the unpacker builds from the CSC hits: one per distinct LCT, from its
@@ -87,9 +88,11 @@ void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::
   using Track = l1t::EMTFTrack;
 
   auto hitTable = std::make_unique<nanoaod::FlatTable>(hits.size(), "EMTFHit", false);
-  hitTable->setDoc("EMTF DAQ hits (data only): every hit of " + label_ +
-                   " (CSC LCTs, GEM clusters, RPC hits received per sector, neighbor copies included), in unpacking "
-                   "order; EMTF conventions");
+  hitTable->setDoc(
+      "EMTF DAQ hits (data only): every hit of " + label_ +
+      " (the CSC LCTs, GEM clusters, RPC hits received per sector that the unpacker keeps: valid, BX within "
+      "+-3, no exact duplicate, RPC/GEM only in sectors with a CSC hit; neighbor copies included), in "
+      "unpacking order; EMTF conventions");
   addColumn<int16_t>(
       *hitTable, "subsystem", hits, [](const Hit& h) { return h.Subsystem(); }, "1 CSC, 2 RPC, 3 GEM (L1TMuon)");
   addColumn<int16_t>(*hitTable, "endcap", hits, [](const Hit& h) { return h.Endcap(); }, "+1 or -1");
@@ -164,10 +167,11 @@ void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::
         throw cms::Exception("InvalidInput") << "EMTFDaqTableProducer: track hit in station " << st;
       if (idx[st - 1] != -1)
         throw cms::Exception("InvalidInput") << "EMTFDaqTableProducer: two track hits in station " << st;
-      int found = -1;
+      // -2: the hit is not in the collection (the unpacker's zero suppression of RPC/GEM hits, EMTFCollections.cc:12-26)
+      int found = -2;
       for (size_t j = 0; j < hits.size(); ++j)
         if (sameHit(th, hits[j])) {
-          if (found != -1)
+          if (found != -2)
             throw cms::Exception("InvalidInput") << "EMTFDaqTableProducer: a track hit matches two hits";
           found = j;
         }
@@ -242,14 +246,21 @@ void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::
       trackRows,
       [](const R& r) { return r.t->Track_num(); },
       "track number (counts the sector's SP records, also of earlier BXs)");
-  addColumn<int16_t>(*trackTable, "nHits", trackRows, [](const R& r) { return r.t->NumHits(); }, "number of hits");
+  addColumn<int16_t>(
+      *trackTable,
+      "nHits",
+      trackRows,
+      [](const R& r) { return r.t->NumHits(); },
+      "number of hits the unpacker matched (-99: none, EMTFTrack.h:85)");
   for (int st = 1; st <= 4; ++st)
     addColumn<int16_t>(
         *trackTable,
         "hitIdx" + std::to_string(st),
         trackRows,
         [st](const R& r) { return r.idx[st - 1]; },
-        "row in EMTFHit of the station-" + std::to_string(st) + " hit, -1 if none");
+        "row in EMTFHit of the station-" + std::to_string(st) +
+            " hit; -1: no hit in the station; -2: the hit is "
+            "not in EMTFHit (removed by the unpacker's zero suppression)");
 
   auto lctTable = gemcscnano::makeLCTTable(
       event.get(lctToken_),

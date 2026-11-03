@@ -57,6 +57,9 @@ void EMTFMuonTableProducer::produce(edm::StreamID, edm::Event& event, const edm:
       if (type != l1t::tftype::emtf_pos && type != l1t::tftype::emtf_neg)
         throw cms::Exception("InvalidInput") << "EMTFMuonTableProducer: a candidate of " << label_
                                              << " is not from EMTF (trackFinderType " << int(type) << ")";
+      if (mu->muIdx() < 0)
+        throw cms::Exception("InvalidInput")
+            << "EMTFMuonTableProducer: a candidate of " << label_ << " has no muIdx (not an unpacked uGMT input)";
       rows.push_back({bx,
                       &*mu,
                       type == l1t::tftype::emtf_pos ? +1 : -1,
