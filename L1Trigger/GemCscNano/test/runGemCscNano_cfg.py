@@ -24,7 +24,7 @@
 #   from L1Trigger.GemCscNano.GemCscNano_cff import setGemCscNanoSelection
 #   setGemCscNanoSelection(process)  # after any change of muonCut or gemCscNanoSelection
 #   process.gemCscNanoMuonPath = cms.Path(process.gemCscNanoMuonFilter)  # the event preselection
-#   process.out = <the NanoAODOutputModule of this file; its l1bits keep statement then names the process L1CSCTPG>
+#   process.out = <the NanoAODOutputModule of this file>
 #   process.e = cms.EndPath(process.out, process.gemCscNanoTask)
 #   process.schedule.extend([process.gemCscNanoMuonPath, process.e])
 # (run on 50 events at 9a43f6e2322, before the ALCT and CLCT tables; emulator digis differ from unpacked ones in
@@ -99,7 +99,7 @@ process.out = cms.OutputModule("NanoAODOutputModule",
     outputCommands=cms.untracked.vstring(
         "drop *",
         "keep nanoaodFlatTable_*Table_*_*",
-        "keep edmTriggerResults_TriggerResults__HLT",  # HLT_* bits
-        "keep edmTriggerResults_l1bits__%s" % process.name_(),  # L1_* bits (not those an input RECO process kept)
+        "keep edmTriggerResults_gemCscNanoHLTBits__%s" % process.name_(),  # HLT_* bits: the muon paths
+        "keep edmTriggerResults_gemCscNanoL1Bits__%s" % process.name_(),  # L1_* bits: the muon seeds
     ))
 process.e = cms.EndPath(process.out, cms.Task(*tasks))

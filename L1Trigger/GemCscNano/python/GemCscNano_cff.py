@@ -9,10 +9,11 @@
 #   MuonCSCSegment, MuonCSCLayer,
 #   MuonCSCRecHitADC, MuonGEMChamber,
 #   MuonGEMHitMatch
-#   TrigObj, L1Mu                       the central NanoAOD tables (TrigObj from the PAT trigger chain of miniAOD, run
-#                                       here on hltTriggerSummaryAOD; L1Mu with every BX of the uGMT readout)
-#   HLT_* and L1_* bits                 TriggerResults of the HLT process and the central l1bits, written by
-#                                       NanoAODOutputModule
+#   TrigObj                             the HLT muon objects (central muon selection, PAT trigger chain of miniAOD run
+#                                       here on hltTriggerSummaryAOD) with one filter bit per single-muon path
+#   L1Mu                                the central table, every BX of the uGMT readout
+#   HLT_* and L1_* bits                 the muon HLT paths and L1 seeds (gemCscNanoHLTBits, gemCscNanoL1Bits),
+#                                       written by NanoAODOutputModule
 #   GenPart, SimTrack, SimTrackCSCLayer gemCscNanoMCTask (MC only; GenPart as in the central NanoAOD)
 # Module labels end in "Table" where NanoAODOutputModule must keep the product (keep nanoaodFlatTable_*Table_*_*).
 # The PAT trigger, gen-particle and NanoAOD modules keep their central labels (patTrigger, prunedGenParticles,
@@ -20,13 +21,14 @@
 # NANO steps.
 import FWCore.ParameterSet.Config as cms
 
-from EventFilter.OnlineMetaDataRawToDigi.tcdsRawToDigi_cfi import tcdsRawToDigi as _tcdsRawToDigi
 from L1Trigger.GemCscNano.cscLCTRecoMuonTableProducer_cfi import cscLCTRecoMuonTableProducer
 from L1Trigger.GemCscNano.cscLCTSimTrackTableProducer_cfi import cscLCTSimTrackTableProducer
-from L1Trigger.L1TGlobal.simGtExtFakeProd_cfi import simGtExtUnprefireable
+from L1Trigger.GemCscNano.triggerResultsSelector_cfi import triggerResultsSelector
 from PhysicsTools.NanoAOD.genparticles_cff import finalGenParticles, genIso, genParticleTable
 from PhysicsTools.NanoAOD.l1trig_cff import l1MuTable as _l1MuTable
-from PhysicsTools.NanoAOD.triggerObjects_cff import l1bits, triggerObjectTable, unpackedPatTrigger
+from PhysicsTools.NanoAOD.triggerObjects_cff import l1bits as _l1bits
+from PhysicsTools.NanoAOD.triggerObjects_cff import mksel, unpackedPatTrigger
+from PhysicsTools.NanoAOD.triggerObjects_cff import triggerObjectTable as _triggerObjectTable
 from PhysicsTools.PatAlgos.slimming.genParticles_cff import (
     packedGenParticles,
     prunedGenParticles,
@@ -66,9 +68,26 @@ gemCscNanoGenFilter = cms.EDFilter("GenParticleSelector", src=cms.InputTag("genP
 
 # As miniAOD makes slimmedPatTrigger (switchOnTriggerStandAlone, packed path names), then the central TrigObj table.
 patTrigger = _patTrigger.clone(onlyStandAlone=True, packTriggerPathNames=cms.bool(True))
-# The central l1bits with its unprefireable-event bits: simGtExtUnprefireable reads the TCDS record, unpacked here from
-# RAW as in the central RawToDigi (Configuration/StandardSequences/python/RawToDigi_cff.py).
-tcdsDigis = _tcdsRawToDigi.clone()
+# TrigObj: the HLT muon objects only (the central muon selection), every one of them (not only those passing a bit),
+# with one filter bit per single-muon path: the object passed the path's last filter (the user's definition,
+# 2026-11-03). Tag and probe on HLT_IsoMu24 uses bit 1.
+GEMCSCNANO_MUON_PATHS = ["HLT_IsoMu20", "HLT_IsoMu24", "HLT_IsoMu27", "HLT_Mu50", "HLT_Mu55", "HLT_CascadeMu100",
+                         "HLT_HighPtTkMu100"]
+triggerObjectTable = _triggerObjectTable.clone(selections=cms.PSet(Muon=_triggerObjectTable.selections.Muon.clone(
+    skipObjectsNotPassingQualityBits=False,
+    qualityBits=cms.VPSet(*[mksel("path('%s_v*', 1, 0)" % p, "last filter of " + p) for p in GEMCSCNANO_MUON_PATHS]))))
+
+# HLT and L1 bits: the muon paths and seeds only (the user's definition, 2026-11-03): a name (after HLT_ or L1_) with a
+# muon token (Mu not followed by a lower-case letter, at the start, after a non-letter or after Iso, Double, Triple,
+# Quad, Di, Trk, Tk, L1, L2, L3, Single, Cascade or HighPtTk; or Muon, MuShower, Csc, CSC) and without another object.
+_muonToken = ("(^|[^A-Za-z])(Iso|Double|Triple|Quad|Di|Trk|Tk|L1|L2|L3|Single|Cascade|HighPtTk)?Mu(?![a-z])"
+              "|Muon|MuShower|Csc|CSC")
+_otherObject = "Ele|EG(?!_)|Photon|Pho|Jet|HT|MET|ETM|Tau|PNet|BTag|Btag|PFMHT|DisplacedSingleJet|Electron"
+gemCscNanoHLTBits = triggerResultsSelector.clone(src=cms.InputTag("TriggerResults", "", "HLT"), prefix="HLT_",
+                                                 select=_muonToken, veto=_otherObject)
+# the central l1bits (final decision), without the unprefireable-event bits (not muon seeds)
+l1bits = _l1bits.clone(storeUnprefireableBits=False)
+gemCscNanoL1Bits = triggerResultsSelector.clone(src="l1bits", prefix="L1_", select=_muonToken, veto=_otherObject)
 # Every BX of the uGMT readout: the producer clamps [minBX, maxBX] to the BXVector's range (SimpleFlatTableProducer.h).
 l1MuTable = _l1MuTable.clone(minBX=-1000, maxBX=1000)
 
@@ -79,9 +98,9 @@ gemCscNanoTask = cms.Task(
     slimmedPatTrigger,
     unpackedPatTrigger,
     triggerObjectTable,
-    tcdsDigis,
-    simGtExtUnprefireable,
+    gemCscNanoHLTBits,
     l1bits,
+    gemCscNanoL1Bits,
     l1MuTable,
 )
 
