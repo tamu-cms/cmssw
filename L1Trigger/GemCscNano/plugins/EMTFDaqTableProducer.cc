@@ -5,8 +5,9 @@
 //              EMTFCollections.cc:88-102), in EMTF conventions;
 //   EMTFTrack  every track of the EMTFTrackCollection, with the row in EMTFHit of its hit in each station (the unpacker
 //              fills no hit index, EMTFTrack::HitIdx(): the rows are found by the hit's identity fields);
-//   EMTFLCT    the CSCCorrelatedLCTDigis the unpacker builds from the CSC hits (neighbor copies dropped), with the
-//              columns of the LCT table (gemcscnano::makeLCTTable).
+//   EMTFLCT    the CSCCorrelatedLCTDigis the unpacker builds from the CSC hits: one per distinct LCT, from its
+//              first copy in unpacking order, home or neighbor sector (EMTFBlockME.cc:315-357), with the columns of the
+//              LCT table (gemcscnano::makeLCTTable).
 
 #include "DataFormats/CSCDigi/interface/CSCCorrelatedLCTDigiCollection.h"
 #include "DataFormats/L1TMuon/interface/EMTFHit.h"
@@ -254,7 +255,8 @@ void EMTFDaqTableProducer::produce(edm::StreamID, edm::Event& event, const edm::
       event.get(lctToken_),
       "EMTFLCT",
       "LCTs of the EMTF readout (data only): every CSCCorrelatedLCTDigi of " + label_ +
-          ", built by the EMTF unpacker from the CSC hits (neighbor copies dropped), in collection order",
+          ", built by the EMTF unpacker from the CSC hits: one per distinct LCT (its first copy, home or neighbor "
+          "sector), in collection order",
       {{"bx",
         "BX: the EMTF hit bx + 8 (emulator convention, CSCConstants::LCT_CENTRAL_BX); not comparable with LCT_bx"},
        {"ring", "ring as CSCDetId (ME1/1a and ME1b: 1)"},
