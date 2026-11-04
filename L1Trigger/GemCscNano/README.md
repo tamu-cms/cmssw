@@ -2,7 +2,8 @@
 
 A NanoAOD-format ntuple of CSC LCTs, ALCTs and CLCTs, reco muons, the muons' CSC and GEM information, trigger information and
 simulation truth, for the R&D of the LCT and GEM-CSC trigger algorithms. No LCT matching and no tag-and-probe
-selection is applied.
+selection is applied: the analysis of GemCscNano (LCT matching, tag and probe, their definitions, consistency checks of
+the tables) is in [gemcscanalysis](https://gitlab.cern.ch/tamu-cms/gem-csc-trigger/gemcscanalysis).
 
 Inputs need reco and raw in the same event (data LCTs are unpacked from RAW): e.g. the ZMu RAW-RECO skim, or AOD with
 its RAW parent (not yet run). MiniAOD cannot be used (no CSC segments; the segment refs in `slimmedMuons` are not usable).
