@@ -1,9 +1,12 @@
 // The GE1/1 pad clusters the ME1/1 OTMBs received and read out: every GEMPadDigiCluster of the CSC unpacker
 // (muonCSCDigis:MuonGEMPadDigiCluster, decoded from the GEM block of the OTMB DAQ data, CSCDCCUnpacker.cc:633-651,
-// CSCGEMData.cc:148-186), in data and in MC (MC RAW is packed from the DIGI step's clusters), in collection order
-// (detector unit, then digi). The unpacker writes each cluster as a first pad and the following ones (consecutive), its
-// readout time bin as bx, and the TMB header's ALCT match time; it keeps only first pads below 192 (CSCGEMData.cc:166),
-// so every cluster is valid. Co-pads are built inside the OTMB and are not read out.
+// CSCGEMData.cc:148-186), in collection order (detector unit, then digi). The unpacker writes each cluster as a
+// first pad and the following ones (consecutive), its time bin as bx, and the TMB header's ALCT match time; it keeps
+// only first pads below 192 (CSCGEMData.cc:166), so every cluster is valid; a readout that fails the TMB-data size
+// check keeps its TMB header but loses its clusters (CSCDCCUnpacker.cc:627, 652-653). MC RAW is packed from the
+// DIGI step's clusters (CSCEventData.cc:541-551, CSCGEMData.cc:192-209): the time bin is the simulated BX (only 0-11
+// are packed) and the ALCT match time is the packer's -1 in a 4-bit field (15). Co-pad positions are built inside the
+// OTMB and not read out (the header's co-pad counts are in TMBHeader).
 
 #include "DataFormats/GEMDigi/interface/GEMPadDigiClusterCollection.h"
 #include "DataFormats/MuonDetId/interface/GEMDetId.h"
@@ -55,22 +58,21 @@ void GEMPadClusterTableProducer::produce(edm::StreamID, edm::Event& event, const
       // the columns hold the first pad and the size: the pads must be consecutive (as the unpacker builds them)
       const auto& pads = cluster->pads();
       if (pads.empty())
-        throw cms::Exception("InvalidInput") << "GEMPadClusterTableProducer: a cluster of " << label_ << " in " << id
-                                             << " has no pad";
+        throw cms::Exception("InvalidInput")
+            << "GEMPadClusterTableProducer: a cluster of " << label_ << " in " << id << " has no pad";
       for (size_t i = 1; i < pads.size(); ++i)
         if (pads[i] != pads[0] + i)
-          throw cms::Exception("InvalidInput") << "GEMPadClusterTableProducer: a cluster of " << label_ << " in " << id
-                                               << " has non-consecutive pads";
+          throw cms::Exception("InvalidInput")
+              << "GEMPadClusterTableProducer: a cluster of " << label_ << " in " << id << " has non-consecutive pads";
       rows.push_back({id, &*cluster});
     }
   }
 
   auto table = std::make_unique<nanoaod::FlatTable>(rows.size(), "GEMPadCluster", false);
   table->setDoc("GE1/1 pad clusters read out by the ME1/1 OTMBs: every GEMPadDigiCluster of " + label_ +
-                ", in collection order (detector unit, then digi); the unpacker keeps first pads below 192 only; co-pads are built "
-                "inside the OTMB and not read out");
-  addColumn<int16_t>(
-      *table, "region", rows, [](const Row& r) { return r.id.region(); }, "+1 or -1 (the CSC endcap)");
+                ", in collection order (detector unit, then digi); MC: the clusters the packer wrote into the RAW "
+                "(simulated BX 0-11); co-pad positions are not read out");
+  addColumn<int16_t>(*table, "region", rows, [](const Row& r) { return r.id.region(); }, "+1 or -1 (the CSC endcap)");
   addColumn<int16_t>(*table, "station", rows, [](const Row& r) { return r.id.station(); }, "GEM station");
   addColumn<int16_t>(*table, "ring", rows, [](const Row& r) { return r.id.ring(); }, "GEM ring");
   addColumn<int16_t>(
@@ -80,11 +82,7 @@ void GEMPadClusterTableProducer::produce(edm::StreamID, edm::Event& event, const
       [](const Row& r) { return r.id.chamber(); },
       "chamber: the number of the ME1/1 chamber whose OTMB read it out");
   addColumn<int16_t>(
-      *table,
-      "layer",
-      rows,
-      [](const Row& r) { return r.id.layer(); },
-      "GEM layer 1 or 2 (the readout's GEM A or B)");
+      *table, "layer", rows, [](const Row& r) { return r.id.layer(); }, "GEM layer 1 or 2 (the readout's GEM A or B)");
   addColumn<int16_t>(
       *table,
       "roll",
@@ -105,13 +103,15 @@ void GEMPadClusterTableProducer::produce(edm::StreamID, edm::Event& event, const
       "bx",
       rows,
       [](const Row& r) { return r.cluster->bx(); },
-      "readout time bin of the cluster (0 = the first time bin of the OTMB's GEM readout), not an L1A-relative BX");
+      "data: the readout time bin of the cluster (0 = the first time bin of the OTMB's GEM readout), not an "
+      "L1A-relative BX; MC: the simulated BX the packer used as time bin (0 = in time; only 0-11 are packed)");
   addColumn<int16_t>(
       *table,
       "alctMatchTime",
       rows,
       [](const Row& r) { return r.cluster->alctMatchTime(); },
-      "the TMB header's ALCT match time of the readout, as the unpacker attaches it");
+      "data: the TMB header's ALCT match time of the readout, as the unpacker attaches it; MC: 15, the packer's "
+      "-1 (no match time) in the 4-bit header field");
   event.put(std::move(table));
 }
 
