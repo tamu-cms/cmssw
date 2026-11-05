@@ -5,6 +5,7 @@
 <use name="DataFormats/CSCDigi"/>
 <use name="DataFormats/CSCRecHit"/>
 <use name="DataFormats/FEDRawData"/>
+<use name="DataFormats/GEMDigi"/>
 <use name="DataFormats/HepMCCandidate"/>
 <use name="DataFormats/L1TMuon"/>
 <use name="DataFormats/Math"/>

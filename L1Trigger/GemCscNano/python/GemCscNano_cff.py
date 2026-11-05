@@ -9,6 +9,8 @@
 #   MuonCSCSegment, MuonCSCLayer,
 #   MuonCSCRecHitADC, MuonGEMChamber,
 #   MuonGEMHitMatch
+#   GEMPadCluster                       gemPadClusterTable: the GE1/1 pad clusters the ME1/1 OTMBs read out (unpacked
+#                                       muonCSCDigis:MuonGEMPadDigiCluster, data and MC); co-pads are not read out
 #   TrigObj                             the HLT muon objects (central muon selection, PAT trigger chain of miniAOD run
 #                                       here on hltTriggerSummaryAOD) with one filter bit per single-muon path
 #   L1Mu                                the central table, every BX of the uGMT readout
@@ -39,6 +41,7 @@ from L1Trigger.GemCscNano.cscLCTSimTrackTableProducer_cfi import cscLCTSimTrackT
 from L1Trigger.GemCscNano.emtfDaqTableProducer_cfi import emtfDaqTableProducer
 from L1Trigger.GemCscNano.emtfMuonTableProducer_cfi import emtfMuonTableProducer
 from L1Trigger.GemCscNano.tmbHeaderTableProducer_cfi import tmbHeaderTableProducer
+from L1Trigger.GemCscNano.gemPadClusterTableProducer_cfi import gemPadClusterTableProducer
 from L1Trigger.GemCscNano.primaryVertexTableProducer_cfi import primaryVertexTableProducer
 from L1Trigger.GemCscNano.triggerResultsSelector_cfi import triggerResultsSelector
 from PhysicsTools.NanoAOD.genparticles_cff import finalGenParticles, genIso, genParticleTable
@@ -117,6 +120,8 @@ primaryVertexTable = primaryVertexTableProducer.clone(src="offlinePrimaryVertice
 # raw data the unpacker reads (the producer checks it against the unpacker's InputObjects).
 tmbHeaderTable = tmbHeaderTableProducer.clone(src=cms.InputTag("muonCSCDigis", "MuonCSCTMBStatusDigi"),
                                               raw="rawDataCollector")
+# GE1/1 pad clusters: those the unpacker decodes from the OTMB readout (useGEMs, on in the Run-3 eras).
+gemPadClusterTable = gemPadClusterTableProducer.clone(src=cms.InputTag("muonCSCDigis", "MuonGEMPadDigiCluster"))
 # EMTF: the output tracks as the uGMT reads them out (data and MC); the EMTF DAQ readout (data only).
 emtfMuonTable = emtfMuonTableProducer.clone(src=cms.InputTag("gmtStage2Digis", "EMTF"))
 emtfDaqTable = emtfDaqTableProducer.clone(src="emtfStage2Digis", lctTable=cms.InputTag("cscLCTRecoMuonTable", "lct"))
@@ -137,6 +142,7 @@ gemCscNanoTask = cms.Task(
     primaryVertexTable,
     emtfMuonTable,
     tmbHeaderTable,
+    gemPadClusterTable,
 )
 
 # Data only: the EMTF readout (FEDs 1384, 1385), not packed in MC RAW.
