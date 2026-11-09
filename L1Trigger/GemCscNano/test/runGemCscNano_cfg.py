@@ -1,6 +1,6 @@
 # NanoAOD-format ntuple of CSC LCTs, ALCTs, CLCTs, reco muons, trigger information and (MC) simulation truth, from
 # Run-3 inputs that carry both RAW and reco: the ZMu skim (/Muon0/Run2026D-ZMu-PromptReco-v1/RAW-RECO), AOD with its RAW
-# parent given as secondary files (not yet run), or MC GEN-SIM-RECO with its GEN-SIM-(DIGI-)RAW parent as secondary
+# parent given as secondary files (not yet tested), or MC GEN-SIM-RECO with its GEN-SIM-(DIGI-)RAW parent as secondary
 # files.
 #
 #   cmsRun runGemCscNano_cfg.py inputFiles=<file> globalTag=<GT of the input> era=<Run-3 era, e.g. Run3_2026> \
