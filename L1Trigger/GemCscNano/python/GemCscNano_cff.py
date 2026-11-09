@@ -1,7 +1,7 @@
 # NanoAOD-format ntuple of CSC LCTs, ALCTs and CLCTs, reco muons, trigger information and simulation truth, one
 # entry per event (Run 3). Events: those with a stored muon (cscLCTRecoMuonTable.muonCut) with pT > 10 GeV and
 # 0.9 < |eta| < 2.4, or (MC) a final-state generator muon with pT > 10 GeV and 0.9 < |eta| < 2.4 (gemCscNanoMuonFilter,
-# gemCscNanoGenFilter; the user's definition of 2026-11-02). Per event: every LCT, ALCT and CLCT; the reco muons
+# gemCscNanoGenFilter; the event preselection of 2026-11-02). Per event: every LCT, ALCT and CLCT; the reco muons
 # passing muonCut (default pT > 10 GeV and the medium or tight cut-based ID). No LCT matching and no tag-and-probe
 # selection is applied (the analysis: gitlab.cern.ch/tamu-cms/gem-csc-trigger/gemcscanalysis).
 #   LCT, ALCT, CLCT, Muon,              cscLCTRecoMuonTable (CSCLCTRecoMuonTableProducer)
@@ -62,7 +62,7 @@ from PhysicsTools.PatAlgos.triggerLayer1.triggerProducer_cfi import patTrigger a
 
 cscLCTRecoMuonTable = cscLCTRecoMuonTableProducer.clone()
 
-# CSC acceptance of the event preselection: the user's definition (2026-11-02), the nominal CSC coverage. A PSet, so a
+# CSC acceptance of the event preselection (defined 2026-11-02), the nominal CSC coverage. A PSet, so a
 # cfg reads it from the process after process.load (importing this cff before cms.Process(name, era) exists would
 # skip the era modifiers of every module it imports).
 gemCscNanoSelection = cms.PSet(cscAcceptance=cms.string("abs(eta) > 0.9 && abs(eta) < 2.4"))
