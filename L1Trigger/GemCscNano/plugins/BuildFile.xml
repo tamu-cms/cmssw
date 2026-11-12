@@ -1,0 +1,32 @@
+<use name="CommonTools/Utils"/>
+<use name="CondFormats/CSCObjects"/>
+<use name="CondFormats/DataRecord"/>
+<use name="DataFormats/Common"/>
+<use name="DataFormats/CSCDigi"/>
+<use name="DataFormats/CSCRecHit"/>
+<use name="DataFormats/FEDRawData"/>
+<use name="DataFormats/GEMDigi"/>
+<use name="DataFormats/HepMCCandidate"/>
+<use name="DataFormats/L1TMuon"/>
+<use name="DataFormats/Math"/>
+<use name="DataFormats/MuonDetId"/>
+<use name="DataFormats/MuonReco"/>
+<use name="DataFormats/NanoAOD"/>
+<use name="DataFormats/TrackReco"/>
+<use name="DataFormats/VertexReco"/>
+<use name="EventFilter/CSCRawToDigi"/>
+<use name="FWCore/Common"/>
+<use name="FWCore/Framework"/>
+<use name="FWCore/ParameterSet"/>
+<use name="FWCore/Utilities"/>
+<use name="Geometry/CSCGeometry"/>
+<use name="Geometry/GEMGeometry"/>
+<use name="Geometry/Records"/>
+<use name="L1Trigger/GemCscNano"/>
+<use name="L1Trigger/L1TMuon"/>
+<use name="SimDataFormats/Track"/>
+<use name="SimDataFormats/TrackingHit"/>
+<use name="SimDataFormats/Vertex"/>
+<library file="*.cc" name="L1TriggerGemCscNanoPlugins">
+  <flags EDM_PLUGIN="1"/>
+</library>

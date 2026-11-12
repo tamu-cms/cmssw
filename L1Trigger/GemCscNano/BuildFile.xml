@@ -1,0 +1,9 @@
+<use name="DataFormats/CSCDigi"/>
+<use name="DataFormats/GeometryVector"/>
+<use name="DataFormats/MuonDetId"/>
+<use name="DataFormats/NanoAOD"/>
+<use name="FWCore/Utilities"/>
+<use name="Geometry/CSCGeometry"/>
+<export>
+  <lib name="1"/>
+</export>
